@@ -72,16 +72,20 @@ jobs:
           mv "dist/独立版 cfet-tcad" dist/cfet-tcad
           echo "frozen solve OK from non-ASCII path"
 
-      - name: Frozen smoke - GUI exe boots offscreen
+      - name: Frozen smoke - GUI exe boots offscreen (double-click conditions)
         run: |
           python - <<'EOF'
           import subprocess, time
-          p = subprocess.Popen(["./dist/cfet-tcad/cfet-tcad-gui.exe"])
+          # DETACHED_PROCESS = no console and no inherited std handles,
+          # exactly how Explorer launches it; sys.stdout is None inside
+          # (the condition that used to crash devsim's import)
+          p = subprocess.Popen(["./dist/cfet-tcad/cfet-tcad-gui.exe"],
+                               creationflags=subprocess.DETACHED_PROCESS)
           time.sleep(25)
           alive = p.poll() is None
           p.kill()
           assert alive, f"GUI exe exited early with {p.returncode}"
-          print("frozen GUI OK (stayed up)")
+          print("frozen GUI OK (stayed up, detached)")
           EOF
 
       - uses: actions/upload-artifact@v4

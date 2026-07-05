@@ -19,6 +19,18 @@ def test_find_math_library_returns_existing_name():
     assert ("/" not in lib and "\\" not in lib) or os.path.exists(lib)
 
 
+def test_std_streams_replaced_when_windowed(monkeypatch):
+    """Frozen windowed apps have sys.stdout/stderr = None; the bootstrap
+    must give them a sink or devsim's import-time prints crash its init."""
+    monkeypatch.setattr(cfet_tcad.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cfet_tcad.sys, "stdout", None)
+    monkeypatch.setattr(cfet_tcad.sys, "stderr", None)
+    cfet_tcad._ensure_std_streams()
+    assert cfet_tcad.sys.stdout is not None
+    assert cfet_tcad.sys.stderr is not None
+    print("write works", file=cfet_tcad.sys.stdout)  # does not raise
+
+
 def test_doctor_reports_healthy(capsys):
     from cfet_tcad.workflow.cli import main
 

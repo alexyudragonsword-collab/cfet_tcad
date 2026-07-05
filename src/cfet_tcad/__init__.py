@@ -24,6 +24,24 @@ __app_name__ = "STACKED CMOS TCAD"
 
 _IS_WINDOWS = os.name == "nt"
 
+
+def _ensure_std_streams() -> None:
+    """Windowed frozen apps (cfet-tcad-gui.exe double-clicked from
+    Explorer) have no console: PyInstaller leaves sys.stdout/stderr as
+    None, and DEVSIM's import-time prints then raise inside the
+    extension's init ("initialization of devsim_py3 raised unreported
+    exception").  Launching the same exe from a terminal inherits valid
+    handles, which is why CI smokes pass while double-click fails - so
+    give headless processes a sink before anything prints."""
+    if not getattr(sys, "frozen", False):
+        return
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
+
+_ensure_std_streams()
+
 # BLAS/LAPACK DLL patterns DEVSIM can use, in preference order
 _WIN_BLAS_GLOBS = ("mkl_rt*.dll", "libopenblas*.dll")
 _UNIX_BLAS_NAMES = ("openblas", "lapack", "blas", "mkl_rt")
