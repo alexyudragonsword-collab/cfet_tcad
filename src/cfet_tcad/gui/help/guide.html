@@ -1,0 +1,225 @@
+<h1>cfet_tcad Workbench &mdash; User Guide</h1>
+
+<p><i>An open-source CFET / stacked-nanosheet TCAD system built on Python,
+DEVSIM (drift-diffusion solver), and gmsh (parametric meshing), with a
+desktop workbench patterned on Synopsys Sentaurus.</i></p>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Sentaurus component</th><th>cfet_tcad equivalent</th></tr>
+<tr><td>Structure Editor (SDE)</td><td>Parametric geometry builders + <b>Structure 3D</b> tab</td></tr>
+<tr><td>Sentaurus Device (SDevice)</td><td>DEVSIM drift-diffusion engine with CVT mobility and density-gradient quantum correction</td></tr>
+<tr><td>Mixed-mode</td><td>Inverter VTC experiment (device/circuit coupled Newton)</td></tr>
+<tr><td>Sentaurus Visual / Inspect</td><td><b>Results</b> tab (curves + figures of merit), <b>Structure 3D</b> tab (VTK rendering)</td></tr>
+<tr><td>Workbench (SWB)</td><td><b>Experiments</b> table, parallel sweeps / DOE</td></tr>
+</table>
+
+<hr>
+<h2>1. Installation</h2>
+
+<pre>
+# system libraries (Debian/Ubuntu)
+sudo apt-get install libopenblas0 libglu1-mesa
+
+pip install -e '.[gui,viz]'     # GUI (PySide6) + 3D rendering (PyVista)
+cfet-tcad-gui                   # launch from the project root
+</pre>
+
+<p>The package locates OpenBLAS for DEVSIM automatically; no environment
+variables are needed. Run <code>pytest</code> once (~3&nbsp;min) to confirm
+the installation.</p>
+
+<hr>
+<h2>2. Five-minute tour</h2>
+
+<p><b>Workflow:</b> pick a config on the left &rarr; review/edit it in
+<b>Parameters</b> &rarr; press <b>Run</b> &rarr; watch the row turn green in
+<b>Experiments</b> &rarr; double-click the row to open <b>Results</b> and
+<b>Structure&nbsp;3D</b>.</p>
+
+<h3>2.1 The Experiments table</h3>
+
+<p>One row per simulation. The status chip follows the Sentaurus Workbench
+convention &mdash; <b>gray</b> queued, <b>yellow</b> running, <b>green</b>
+done, <b>red</b> failed &mdash; and the figure-of-merit columns
+(V<sub>t</sub>, SS, I<sub>on</sub>, I<sub>off</sub>, DIBL) are filled in
+automatically from the run's extraction output.</p>
+
+<p><img src="img/tab_experiments.png" width="820"></p>
+
+<h3>2.2 Parameters</h3>
+
+<p>The form is generated from the configuration schema and grouped by
+section. Enumerated fields (structure, mobility model, quantum model,
+materials) are combo boxes; every save is validated, so a typo is caught
+before a solver ever starts. <b>Run</b> always uses the current form state,
+so you can edit and re-run without touching files.</p>
+
+<p><img src="img/tab_parameters.png" width="820"></p>
+
+<h3>2.3 Results</h3>
+
+<p>Interactive curves re-plotted from the run's CSV (zoom/pan toolbar,
+log/linear toggle) plus the flattened figure-of-merit table. All four
+experiment types render appropriately: transfer (Id&ndash;Vg), output
+(Id&ndash;Vd), CFET common-gate pairs, and inverter VTC.</p>
+
+<p><img src="img/tab_results.png" width="820"></p>
+
+<h3>2.4 Structure 3D</h3>
+
+<p>Real VTK rendering of the device. Use the toolbar <b>Structure</b>
+button for a seconds-fast preview of the current configuration (mesh +
+doping, no solve &mdash; the SDE workflow), or double-click a finished
+experiment to load its bias-point snapshots. The combos switch the
+snapshot (bias point) and the colored field:
+<code>Structure</code> (materials), <code>NetDoping</code> (symmetric-log),
+<code>Potential</code>, <code>Electrons</code>/<code>Holes</code> (log), and
+<code>Lambda_n/p</code> (quantum potential). <b>clip open</b> cuts the
+device at the mid-plane to expose the channel.</p>
+
+<p><img src="img/tab_structure.png" width="820"></p>
+
+<p>Example renders &mdash; a 3D CFET stack colored by net doping (red =
+pFET acceptor S/D, blue = nFET donor S/D, translucent gate-oxide shells),
+and a gate-all-around nanosheet colored by potential in the ON state:</p>
+
+<p><img src="img/cfet3d_doping.png" width="820"></p>
+<p><img src="img/gaa_potential.png" width="820"></p>
+
+<hr>
+<h2>3. Sweeps (design of experiments)</h2>
+
+<p><b>Sweep&hellip;</b> opens the DOE dialog. Enter one parameter per line
+as <code>path=v1,v2,&hellip;</code>; multiple lines form a cartesian
+product, or check <b>zip</b> to advance the lists together as paired
+tuples. Points expand into individual table rows executed by a bounded
+process pool &mdash; rows light up green one by one:</p>
+
+<p><img src="img/sweep_midflight.png" width="820"></p>
+
+<pre>
+device.l_gate_nm=12,15,18,21                    # gate-length scaling study
+
+# zipped pair: SiGe composition sweep with the gate metal retuned
+# at each composition to hold Vt constant
+device.channel_material_p=Silicon,SiGe15,SiGe30,SiGe45
+device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
+</pre>
+
+<hr>
+<h2>4. Device structures</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th><code>device.structure</code></th><th>Description</th></tr>
+<tr><td><code>nanosheet_2d</code></td><td>2D double-gate along-channel cross section &mdash; the standard 2D approximation of a GAA nanosheet. Fastest; ideal for methodology and sweeps.</td></tr>
+<tr><td><code>gaa_3d</code></td><td>Full 3D gate-all-around single nanosheet: silicon bar wrapped by an oxide shell carrying one all-around gate.</td></tr>
+<tr><td><code>cfet_2d</code></td><td>CFET stack: nFET sheet over pFET sheet, four gate contacts on a common gate (per-sheet metals), both devices in one coupled Newton system.</td></tr>
+<tr><td><code>cfet_3d</code></td><td>Two stacked 3D GAA nanosheets with a common gate &mdash; the full CFET.</td></tr>
+</table>
+
+<p>Key geometry knobs (all nm): <code>l_gate_nm</code>,
+<code>t_si_nm</code>, <code>t_ox_nm</code>, <code>l_sd_nm</code>,
+<code>sheet_width_nm</code>, <code>t_gap_nm</code> (CFET inter-sheet gate
+metal). Doping: <code>sd_doping_cm3</code>,
+<code>channel_doping_cm3</code>, <code>junction_lambda_nm</code> (gaussian
+junction tail). V<sub>t</sub> is set by the gate metal:
+<code>gate_workfunction_ev</code> (single device) or
+<code>gate_workfunction_n_ev</code>/<code>_p_ev</code> (CFET).</p>
+
+<hr>
+<h2>5. Physics models</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Setting</th><th>Options</th><th>Notes</th></tr>
+<tr><td><code>physics.mobility_model</code></td>
+    <td><code>const</code>, <code>doping</code>, <code>doping_vsat</code>,
+        <code>lombardi_vsat</code></td>
+    <td><code>doping_vsat</code>: Caughey&ndash;Thomas doping dependence +
+        velocity saturation. <code>lombardi_vsat</code> adds CVT
+        vertical-field surface scattering (element-based assembly, 2D and
+        3D) &mdash; expect roughly &minus;25% linear I<sub>on</sub> on the
+        default device.</td></tr>
+<tr><td><code>physics.quantum_model</code></td>
+    <td><code>none</code>, <code>density_gradient</code></td>
+    <td>Bohm quantum potential for the transport carrier with an
+        oxide-barrier Robin interface condition; produces volume inversion
+        and a positive V<sub>t</sub> shift (~+15&ndash;20&nbsp;mV at
+        t<sub>si</sub>=5&nbsp;nm). Strength calibrates via
+        <code>dg_gamma_n/p</code>.</td></tr>
+<tr><td>combined</td><td><code>lombardi_vsat</code> +
+        <code>density_gradient</code></td>
+    <td>The "full physics" pairing Sentaurus uses by default on
+        advanced-node devices; effects compose near-multiplicatively.</td></tr>
+<tr><td><code>device.channel_material</code><br>(<code>_n/_p</code> for CFET)</td>
+    <td><code>Silicon</code>, <code>SiGeNN</code></td>
+    <td><code>SiGeNN</code> = strained Si<sub>1-x</sub>Ge<sub>x</sub> with
+        NN = Ge percent (0&ndash;50), parameters interpolated continuously.
+        Retune the pFET gate metal when changing composition (the bandgap
+        moves the band reference).</td></tr>
+</table>
+
+<p>Classical vs density-gradient on the default 15&nbsp;nm nFET &mdash;
+transfer curves and the mid-channel carrier profile showing volume
+inversion:</p>
+
+<p><img src="img/dg_comparison.png" width="820"></p>
+
+<hr>
+<h2>6. Experiments</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th><code>simulation.type</code></th><th>What it does</th><th>Key settings</th></tr>
+<tr><td><code>idvg</code></td><td>Gate sweep at each drain bias in <code>vd</code>; extracts V<sub>t</sub> (constant-current and max-g<sub>m</sub>), SS, I<sub>on</sub>/I<sub>off</sub>, and DIBL when two V<sub>d</sub> values are given.</td><td><code>vd</code>, <code>vg_start/stop/step</code></td></tr>
+<tr><td><code>idvd</code></td><td>Drain sweep at each gate bias in <code>vg</code> (output characteristics).</td><td><code>vg</code>, <code>vd_start/stop/step</code></td></tr>
+<tr><td><code>cfet_idvg</code></td><td>CFET common-gate sweep under CMOS-pair bias; one coupled solve yields both transfer curves and both FOM sets.</td><td><code>vdd</code>, <code>vg_*</code></td></tr>
+<tr><td><code>cfet_vtc</code></td><td>Inverter voltage transfer characteristic: V<sub>out</sub> is a floating circuit node solved self-consistently (mixed device/circuit). Extracts V<sub>M</sub>, gain, noise margins.</td><td><code>vdd</code>, <code>vg_*</code></td></tr>
+</table>
+
+<p><img src="img/vtc_curves.png" width="820"></p>
+
+<hr>
+<h2>7. Command line</h2>
+
+<pre>
+cfet-tcad run &lt;config.yaml&gt; [-o outdir]      # full pipeline
+cfet-tcad sweep &lt;config&gt; -p PATH=V1,V2 [-p ...] [--zip] [-j N]
+cfet-tcad structure &lt;config&gt; [-o dir] [--png img.png]   # no-solve preview
+cfet-tcad mesh &lt;config&gt;                      # gmsh mesh only
+</pre>
+
+<p>Each run writes to its output directory: <code>idvg.csv</code> /
+<code>idvd.csv</code> / <code>vtc.csv</code> (all bias points),
+<code>*.png</code> (curves), <code>fom.json</code> (extracted figures of
+merit), and <code>vtk/</code> (field snapshots &mdash; also openable in
+VisIt/ParaView via the <code>.pvd</code>/<code>.visit</code> index, with
+the sweep bias as the timestep).</p>
+
+<hr>
+<h2>8. Tips &amp; troubleshooting</h2>
+
+<ul>
+<li><b>Typical runtimes</b> &mdash; 2D Id&ndash;Vg: ~1&ndash;2&nbsp;min;
+3D: a few minutes; <code>lombardi_vsat</code> or
+<code>density_gradient</code> add ~30&ndash;50%. Structure previews take
+seconds.</li>
+<li><b>Convergence</b> &mdash; bias ramps halve their step automatically;
+the quantum and CVT models ramp in via internal homotopy. If a point still
+fails, coarsen the sweep step or the mesh first.</li>
+<li><b>Every experiment is a separate OS process</b> (DEVSIM keeps global
+state), so a crash never takes the workbench down; check the row's
+<code>run.log</code>-equivalent in the log console.</li>
+<li><b>V<sub>t</sub> tuning</b> &mdash; use the gate workfunction, not
+channel doping: these channels are essentially undoped, as in real
+GAA/CFET devices.</li>
+<li><b>Short-channel limits</b> &mdash; with t<sub>si</sub>=5&nbsp;nm the
+electrostatic scaling limit is around L<sub>g</sub>&nbsp;&asymp;
+12&ndash;15&nbsp;nm; below that the extractor honestly reports NaN because
+the device no longer turns off past the I<sub>crit</sub> criterion.</li>
+<li><b>Headless / CI</b> &mdash; the GUI runs under
+<code>QT_QPA_PLATFORM=offscreen</code>; 3D renders fall back to OSMesa or
+<code>xvfb-run</code>.</li>
+</ul>
+
+<hr>
+<p><i>All numbers shown in this guide are actual outputs of the bundled
+example configurations, reproduced by the test suite.</i></p>

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from ..workflow.sweep import parse_param_spec
 from .config_form import ConfigForm
 from .experiment_table import ExperimentModel
+from .help_view import HelpView
 from .log_console import LogConsole
 from .results_view import ResultsView
 from .run_queue import RunQueue
@@ -81,11 +82,13 @@ class MainWindow(QMainWindow):
         self.log = LogConsole()
 
         self.structure = StructureView()
+        self.help = HelpView()
         self.tabs = QTabWidget()
         self.tabs.addTab(self.table, "Experiments")
         self.tabs.addTab(self.form, "Parameters")
         self.tabs.addTab(self.results, "Results")
         self.tabs.addTab(self.structure, "Structure 3D")
+        self.tabs.addTab(self.help, "Help")
 
         hsplit = QSplitter(Qt.Horizontal)
         hsplit.addWidget(self.config_list)

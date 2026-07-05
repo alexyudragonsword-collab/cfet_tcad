@@ -30,6 +30,9 @@ cfet-tcad-gui = "cfet_tcad.gui.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"cfet_tcad.gui" = ["help/*.html", "help/img/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: runs a full simulation pipeline (several seconds or more)"]

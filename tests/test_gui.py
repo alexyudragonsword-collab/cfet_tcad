@@ -96,8 +96,24 @@ def test_main_window_constructs(qapp, tmp_path):
 
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
     assert win.config_list.count() == 0
-    assert win.tabs.count() == 4  # Experiments/Parameters/Results/Structure
+    # Experiments/Parameters/Results/Structure/Help
+    assert win.tabs.count() == 5
     win.close()
+
+
+def test_help_guide_renders_with_images(qapp):
+    from cfet_tcad.gui.help_view import HelpView, guide_path
+
+    path = guide_path()
+    assert path.exists()
+    # every referenced image must ship with the package
+    import re
+    for img in re.findall(r'src="(img/[^"]+)"', path.read_text()):
+        assert (path.parent / img).exists(), img
+    view = HelpView()
+    text = view.browser.toPlainText()
+    assert "User Guide" in text
+    assert "Sweeps" in text and "Physics models" in text
 
 
 def test_results_view_loads_fom(qapp, tmp_path):
