@@ -110,8 +110,9 @@ cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./r
 
 ### Windows 独立版（免装 Python）
 
-两条独立的 GitHub Actions 构建跑道（均在 `v*` 标签或 packaging 变更时
-触发，工件在 Actions 运行页下载，打 tag 时附到 Release），包内都含
+两条独立的 GitHub Actions 构建跑道（均为**手动触发**：Actions 页选中
+工作流点 "Run workflow"，或推 `v*` 标签做发布构建；工件在 Actions
+运行页下载，打 tag 时附到 Release），包内都含
 DEVSIM+MKL、gmsh、Qt、VTK 全部运行时，Windows 11 x64 免装 Python：
 
 - **Windows EXE**（PyInstaller）→ 工件 `cfet-tcad-windows-x64`：

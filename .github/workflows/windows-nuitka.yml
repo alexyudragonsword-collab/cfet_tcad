@@ -1,15 +1,12 @@
 name: Windows EXE (Nuitka)
 
+# manual-only: trigger from Actions -> "Windows EXE (Nuitka)" -> Run
+# workflow (or push a v* tag for a release build); branch pushes never
+# build
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
-    # Nuitka compiles for a long time; branch pushes only trigger when
-    # the packaging inputs themselves change
-    branches: ["**"]
-    paths:
-      - ".github/workflows/windows-nuitka.yml"
-      - "packaging/**"
 
 concurrency:
   group: nuitka-${{ github.ref }}
