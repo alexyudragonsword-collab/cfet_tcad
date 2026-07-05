@@ -22,6 +22,8 @@ __version__ = "0.5"
 __author__ = "Yu Rui"
 __app_name__ = "STACKED CMOS TCAD"
 
+_IS_WINDOWS = os.name == "nt"
+
 # BLAS/LAPACK DLL patterns DEVSIM can use, in preference order
 _WIN_BLAS_GLOBS = ("mkl_rt*.dll", "libopenblas*.dll")
 _UNIX_BLAS_NAMES = ("openblas", "lapack", "blas", "mkl_rt")
@@ -36,22 +38,29 @@ def _add_dll_dir(directory: Path) -> None:
 
 
 def _find_math_library() -> str | None:
+    # NB (Windows): return the bare DLL *filename* and register its
+    # directory with the loaders instead of passing a full path.  DEVSIM's
+    # C++ side reads DEVSIM_MATH_LIBS as a narrow string, so a full path
+    # containing non-ASCII characters (e.g. an install dir under a Chinese
+    # user name) fails to load; a plain ASCII filename resolved through
+    # the Unicode-aware PATH search works from any install location.
     if getattr(sys, "frozen", False):
         # PyInstaller onedir: DLLs live next to the exe or in _internal
         exe_dir = Path(sys.executable).parent
         for d in (exe_dir, exe_dir / "_internal"):
             if not d.is_dir():
                 continue
-            patterns = (_WIN_BLAS_GLOBS if os.name == "nt"
+            patterns = (_WIN_BLAS_GLOBS if _IS_WINDOWS
                         else ("libopenblas.so*", "liblapack.so*"))
             for pattern in patterns:
                 hits = sorted(d.glob(pattern))
                 if hits:
-                    if os.name == "nt":
+                    if _IS_WINDOWS:
                         _add_dll_dir(d)
+                        return hits[0].name
                     return str(hits[0])
         return None
-    if os.name == "nt":
+    if _IS_WINDOWS:
         # the pip 'mkl' wheel drops its DLLs into <prefix>/Library/bin
         libbin = Path(sys.prefix) / "Library" / "bin"
         if libbin.is_dir():
@@ -59,7 +68,7 @@ def _find_math_library() -> str | None:
                 hits = sorted(libbin.glob(pattern))
                 if hits:
                     _add_dll_dir(libbin)
-                    return str(hits[0])
+                    return hits[0].name
         return ctypes.util.find_library("mkl_rt")
     for name in _UNIX_BLAS_NAMES:
         found = ctypes.util.find_library(name)

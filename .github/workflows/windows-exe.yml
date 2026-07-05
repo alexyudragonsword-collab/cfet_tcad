@@ -46,6 +46,23 @@ jobs:
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
 
+      - name: Frozen smoke - tiny solve from a non-ASCII install path
+        run: |
+          # regression: DEVSIM_MATH_LIBS must survive install dirs with
+          # non-ASCII characters (Chinese user names), and the solve must
+          # reach BLAS (mkl threading layer loads libiomp5md lazily)
+          mv dist/cfet-tcad "dist/独立版 cfet-tcad"
+          cat > smoke_tiny.yaml <<'YAML'
+          device: {name: smoke, polarity: n, gate_workfunction_ev: 4.5}
+          mesh: {nx_sd: 6, nx_gate: 10, ny_si: 5, ny_ox: 2}
+          simulation: {type: idvg, vd: [0.7], vg_start: 0.0, vg_stop: 0.2, vg_step: 0.1}
+          output: {directory: smoke_solve, vtk: false}
+          YAML
+          "./dist/独立版 cfet-tcad/cfet-tcad.exe" run smoke_tiny.yaml -o smoke_solve
+          test -f smoke_solve/fom.json
+          mv "dist/独立版 cfet-tcad" dist/cfet-tcad
+          echo "frozen solve OK from non-ASCII path"
+
       - name: Frozen smoke - GUI exe boots offscreen
         run: |
           python - <<'EOF'

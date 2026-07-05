@@ -73,14 +73,17 @@ jobs:
           assert dist.is_dir(), dist
           (dist / "lib").mkdir(exist_ok=True)
           copied = []
-          for src in (Path(sys.prefix) / "Library" / "bin").glob("mkl_*.dll"):
-              shutil.copy2(src, dist); copied.append(src.name)
+          libbin = Path(sys.prefix) / "Library" / "bin"
+          for pattern in ("mkl_*.dll", "libiomp5md*.dll"):
+              for src in libbin.glob(pattern):
+                  shutil.copy2(src, dist); copied.append(src.name)
           for src in (Path(sys.prefix) / "lib").glob("gmsh*.dll"):
               shutil.copy2(src, dist)
               shutil.copy2(src, dist / "lib")
               copied.append(src.name)
           print(f"copied {len(copied)} DLLs:", *copied[:6])
           assert any(n.startswith("mkl_rt") for n in copied), "mkl_rt missing"
+          assert any(n.startswith("libiomp5md") for n in copied), "iomp missing"
           assert any(n.startswith("gmsh") for n in copied), "gmsh dll missing"
           EOF
 
@@ -89,6 +92,20 @@ jobs:
           ./build/entry_nuitka.dist/cfet-tcad.exe structure configs/nsheet_nfet_2d.yaml -o smoke_out
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
+
+      - name: Frozen smoke - tiny solve from a non-ASCII install path
+        run: |
+          mv build/entry_nuitka.dist "build/独立版 dist"
+          cat > smoke_tiny.yaml <<'YAML'
+          device: {name: smoke, polarity: n, gate_workfunction_ev: 4.5}
+          mesh: {nx_sd: 6, nx_gate: 10, ny_si: 5, ny_ox: 2}
+          simulation: {type: idvg, vd: [0.7], vg_start: 0.0, vg_stop: 0.2, vg_step: 0.1}
+          output: {directory: smoke_solve, vtk: false}
+          YAML
+          "./build/独立版 dist/cfet-tcad.exe" run smoke_tiny.yaml -o smoke_solve
+          test -f smoke_solve/fom.json
+          mv "build/独立版 dist" build/entry_nuitka.dist
+          echo "frozen solve OK from non-ASCII path"
 
       - name: Frozen smoke - GUI boots offscreen (no-args dispatch)
         run: |

@@ -24,3 +24,22 @@ def test_explicit_env_wins(monkeypatch):
     # must not overwrite a user-provided value
     cfet_tcad._ensure_devsim_math_libs()
     assert os.environ["DEVSIM_MATH_LIBS"] == "libcustom.so"
+
+
+def test_frozen_windows_returns_bare_filename(tmp_path, monkeypatch):
+    """Windows result must be a filename, never a path: DEVSIM reads
+    DEVSIM_MATH_LIBS as a narrow string, so full paths break under
+    non-ASCII install directories (e.g. a Chinese user name)."""
+    internal = tmp_path / "_internal"
+    internal.mkdir()
+    (internal / "mkl_rt.2.dll").write_bytes(b"")
+    monkeypatch.setattr(cfet_tcad.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(cfet_tcad.sys, "executable",
+                        str(tmp_path / "cfet-tcad.exe"))
+    monkeypatch.setattr(cfet_tcad, "_IS_WINDOWS", True)
+    added = []
+    monkeypatch.setattr(cfet_tcad.os, "add_dll_directory",
+                        lambda d: added.append(d), raising=False)
+    assert cfet_tcad._find_math_library() == "mkl_rt.2.dll"
+    assert added == [str(internal)]  # directory registered with loaders
+    assert os.environ["PATH"].startswith(str(internal))
