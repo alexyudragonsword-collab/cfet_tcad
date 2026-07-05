@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 gui = ["PySide6-Essentials"]
+viz = ["pyvista", "pyvistaqt"]
 
 [project.scripts]
 cfet-tcad = "cfet_tcad.workflow.cli:main"

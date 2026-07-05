@@ -96,7 +96,7 @@ def test_main_window_constructs(qapp, tmp_path):
 
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
     assert win.config_list.count() == 0
-    assert win.tabs.count() == 3
+    assert win.tabs.count() == 4  # Experiments/Parameters/Results/Structure
     win.close()
 
 

@@ -33,6 +33,7 @@ from .experiment_table import ExperimentModel
 from .log_console import LogConsole
 from .results_view import ResultsView
 from .run_queue import RunQueue
+from .structure_view import StructureView
 
 
 class SweepDialog(QDialog):
@@ -79,10 +80,12 @@ class MainWindow(QMainWindow):
         self.results = ResultsView()
         self.log = LogConsole()
 
+        self.structure = StructureView()
         self.tabs = QTabWidget()
         self.tabs.addTab(self.table, "Experiments")
         self.tabs.addTab(self.form, "Parameters")
         self.tabs.addTab(self.results, "Results")
+        self.tabs.addTab(self.structure, "Structure 3D")
 
         hsplit = QSplitter(Qt.Horizontal)
         hsplit.addWidget(self.config_list)
@@ -104,6 +107,7 @@ class MainWindow(QMainWindow):
         bar.addAction("Sweep...", self.run_sweep)
         bar.addAction("Stop", self.queue.stop_all)
         bar.addSeparator()
+        bar.addAction("Structure", self.preview_structure)
         bar.addAction("Open config folder...", self.pick_folder)
 
         # wiring
@@ -204,10 +208,52 @@ class MainWindow(QMainWindow):
             self.queue.enqueue(exp)
         self.tabs.setCurrentWidget(self.table)
 
+    def preview_structure(self) -> None:
+        """SDE-style preview: mesh + doping export without solving, in a
+        subprocess, then load into the 3D view."""
+        base = self._current_config()
+        if base is None:
+            QMessageBox.information(self, "Structure",
+                                    "select a config first")
+            return
+        out = self._new_out_dir(f"{base.stem}_structure")
+        try:
+            out.mkdir(parents=True, exist_ok=True)
+            self.form.save(out / "config.yaml")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid parameters", str(exc))
+            return
+        import sys
+
+        from PySide6.QtCore import QProcess
+        proc = QProcess(self)
+        proc.setProgram(sys.executable)
+        proc.setArguments(["-m", "cfet_tcad.workflow.cli", "structure",
+                           str(out / "config.yaml"), "-o", str(out)])
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyReadStandardOutput.connect(
+            lambda: [self.log.append(f"[structure] {ln}") for ln in
+                     bytes(proc.readAllStandardOutput()).decode(
+                         errors="replace").splitlines()])
+        proc.finished.connect(
+            lambda code, _s: self._structure_ready(out, code))
+        self.statusBar().showMessage("building structure preview...")
+        proc.start()
+
+    def _structure_ready(self, out: Path, exit_code: int) -> None:
+        if exit_code != 0:
+            self.statusBar().showMessage("structure preview failed")
+            return
+        self.structure.load_dir(out / "vtk")
+        self.tabs.setCurrentWidget(self.structure)
+        self.statusBar().showMessage("structure loaded")
+
     def open_result(self, index) -> None:
         exp = self.model.experiments[index.row()]
         self.results.load_dir(exp.out_dir)
         self.tabs.setCurrentWidget(self.results)
+        if (exp.out_dir / "vtk").is_dir():
+            self.structure.load_dir(exp.out_dir / "vtk")
 
     def _refresh_status(self) -> None:
         counts: dict = {}

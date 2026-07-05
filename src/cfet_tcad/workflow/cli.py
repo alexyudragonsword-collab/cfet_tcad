@@ -22,6 +22,15 @@ def main(argv=None) -> int:
     mesh_p.add_argument("config", type=Path)
     mesh_p.add_argument("-o", "--output", type=Path, default=None)
 
+    struct_p = sub.add_parser(
+        "structure",
+        help="build the mesh and export the doped structure to VTK "
+             "without solving (Structure Editor-style preview)")
+    struct_p.add_argument("config", type=Path)
+    struct_p.add_argument("-o", "--output", type=Path, default=None)
+    struct_p.add_argument("--png", type=Path, default=None,
+                          help="also render a 3D image (requires pyvista)")
+
     sweep_p = sub.add_parser(
         "sweep", help="parametric sweep: one process per point")
     sweep_p.add_argument("config", type=Path)
@@ -54,11 +63,38 @@ def main(argv=None) -> int:
     cfg = load_config(args.config)
 
     if args.command == "mesh":
-        from ..geometry import Nanosheet2DBuilder
+        from ..geometry import BUILDERS
         out = Path(args.output or cfg.output.directory)
         msh = out / f"{cfg.device.name}.msh"
-        Nanosheet2DBuilder(cfg.device, cfg.mesh).build(msh)
+        BUILDERS[cfg.device.structure](cfg.device, cfg.mesh).build(msh)
         print(f"mesh written: {msh}")
+        return 0
+
+    if args.command == "structure":
+        import devsim
+
+        from ..geometry import BUILDERS
+        from ..meshio_devsim import load_mesh
+        from ..physics.doping import create_doping
+
+        out = Path(args.output or cfg.output.directory)
+        out.mkdir(parents=True, exist_ok=True)
+        msh = out / f"{cfg.device.name}.msh"
+        layout = BUILDERS[cfg.device.structure](cfg.device, cfg.mesh).build(msh)
+        device = load_mesh(msh, layout, cfg.device.name)
+        for region, material in layout.regions.items():
+            if material == "Silicon":
+                polarity = layout.silicon_polarity.get(
+                    region, cfg.device.polarity)
+                create_doping(device, region, cfg.device, polarity=polarity)
+        vtk_dir = out / "vtk"
+        vtk_dir.mkdir(exist_ok=True)
+        devsim.write_devices(file=str(vtk_dir / "structure"), type="vtk")
+        print(f"structure written: {vtk_dir}/")
+        if args.png:
+            from ..io.render3d import render_structure
+            render_structure(vtk_dir, png=args.png, field="NetDoping")
+            print(f"rendered: {args.png}")
         return 0
 
     from .runner import run_config

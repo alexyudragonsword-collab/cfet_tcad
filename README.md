@@ -94,6 +94,13 @@ cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./r
   配置校验。
 - **Results 页**（Sentaurus Visual/Inspect）：matplotlib 交互画布重绘
   CSV 曲线（log/linear 切换、缩放/平移工具栏）+ 展平的 FOM 表。
+- **Structure 3D 页**（SDE + Sentaurus Visual 3D）：PyVista/VTK 交互
+  三维渲染（需 `pip install -e '.[viz]'`）——工具栏 Structure 按钮对
+  当前配置做"只建结构不求解"的快照预览（`cfet-tcad structure`，掺杂
+  着色），双击已完成实验行则加载其偏压快照，字段下拉切换
+  Structure/NetDoping/Potential/Electrons/Lambda_n，可剖切、可选偏压
+  点；无 pyvista 时该页优雅降级为提示。命令行等价：
+  `cfet-tcad structure configs/cfet_3d.yaml -o out --png device.png`。
 - **Sweep… 对话框**：多行 `path=v1,v2,...` 参数网格（可选 zip 成组），
   在表格中展开为逐点任务，限并发并行执行。
 - 每个实验在独立 OS 进程中运行（QProcess 驱动 CLI，与 DEVSIM 全局
