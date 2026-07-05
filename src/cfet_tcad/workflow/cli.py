@@ -37,6 +37,11 @@ def main(argv=None) -> int:
                           help="export a material-colored OBJ + MTL "
                                "(needs GL, like --png)")
 
+    sub.add_parser(
+        "doctor",
+        help="print an environment self-diagnosis (report this output "
+             "when the app fails to start)")
+
     sweep_p = sub.add_parser(
         "sweep", help="parametric sweep: one process per point")
     sweep_p.add_argument("config", type=Path)
@@ -58,6 +63,10 @@ def main(argv=None) -> int:
                               "cartesian product")
 
     args = parser.parse_args(argv)
+
+    if args.command == "doctor":
+        from .doctor import run_doctor
+        return run_doctor()
 
     if args.command == "sweep":
         from .config import load_config

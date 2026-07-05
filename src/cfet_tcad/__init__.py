@@ -37,6 +37,21 @@ def _add_dll_dir(directory: Path) -> None:
     os.environ["PATH"] = f"{directory}{os.pathsep}" + os.environ.get("PATH", "")
 
 
+def _preload(dll: Path) -> None:
+    """Load the BLAS DLL into the process by full Unicode path before
+    DEVSIM asks for it.  DEVSIM's own narrow-string LoadLibrary then
+    resolves the already-loaded module by basename without touching the
+    filesystem - immune to non-ASCII install paths, deep paths beyond
+    MAX_PATH, and codepage quirks.  A failure here is only a warning:
+    DEVSIM still gets its own chance through the PATH search."""
+    try:
+        import ctypes
+        ctypes.WinDLL(str(dll))
+    except OSError as exc:  # pragma: no cover - Windows-only branch
+        print(f"warning: could not preload {dll.name}: {exc}",
+              file=sys.stderr)
+
+
 def _find_math_library() -> str | None:
     # NB (Windows): return the bare DLL *filename* and register its
     # directory with the loaders instead of passing a full path.  DEVSIM's
@@ -57,6 +72,7 @@ def _find_math_library() -> str | None:
                 if hits:
                     if _IS_WINDOWS:
                         _add_dll_dir(d)
+                        _preload(hits[0])
                         return hits[0].name
                     return str(hits[0])
         return None
@@ -68,6 +84,7 @@ def _find_math_library() -> str | None:
                 hits = sorted(libbin.glob(pattern))
                 if hits:
                     _add_dll_dir(libbin)
+                    _preload(hits[0])
                     return hits[0].name
         return ctypes.util.find_library("mkl_rt")
     for name in _UNIX_BLAS_NAMES:

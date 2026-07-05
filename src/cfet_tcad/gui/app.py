@@ -22,7 +22,6 @@ def main(argv=None) -> int:
     from PySide6.QtWidgets import QApplication
 
     from .icon import app_icon
-    from .main_window import MainWindow
 
     if sys.platform == "win32":
         # give the process its own taskbar identity so Windows shows the
@@ -36,7 +35,30 @@ def main(argv=None) -> int:
                                 Path(sys.executable).parent)
     app = QApplication(argv)
     app.setWindowIcon(app_icon())  # inherited by all windows
-    window = MainWindow(project_root=root)
+    try:
+        # deferred: this import chain pulls in devsim/gmsh, the pieces
+        # that can fail on a broken install - fail with guidance
+        from .main_window import MainWindow
+        window = MainWindow(project_root=root)
+    except Exception:  # noqa: BLE001 - startup surface for any failure
+        import traceback
+
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle("Startup failure")
+        box.setText(
+            "The simulation runtime failed to initialize.\n\n"
+            "Please open a terminal in the install folder, run\n"
+            "    cfet-tcad.exe doctor\n"
+            "and report its full output.\n"
+            "仿真运行时初始化失败：请在安装目录打开命令行，运行\n"
+            "    cfet-tcad.exe doctor\n"
+            "并反馈完整输出。")
+        box.setDetailedText(traceback.format_exc())
+        box.exec()
+        return 1
     window.show()
     return app.exec()
 

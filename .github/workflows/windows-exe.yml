@@ -51,6 +51,10 @@ jobs:
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
 
+      - name: Frozen smoke - doctor self-diagnosis
+        run: |
+          ./dist/cfet-tcad/cfet-tcad.exe doctor
+
       - name: Frozen smoke - tiny solve from a non-ASCII install path
         run: |
           # regression: DEVSIM_MATH_LIBS must survive install dirs with

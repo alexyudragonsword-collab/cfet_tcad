@@ -98,6 +98,10 @@ jobs:
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
 
+      - name: Frozen smoke - doctor self-diagnosis
+        run: |
+          ./build/entry_nuitka.dist/cfet-tcad.exe doctor
+
       - name: Frozen smoke - tiny solve from a non-ASCII install path
         run: |
           mv build/entry_nuitka.dist "build/独立版 dist"
