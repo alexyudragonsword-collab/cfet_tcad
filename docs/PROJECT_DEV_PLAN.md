@@ -1,10 +1,27 @@
 # STACKED CMOS TCAD — 工程完整开发计划与状态
 
 > 本文档是项目的持续性记录，**定期更新**（每完成一个阶段性功能后同步）。
-> 与 `docs/dev_plan_*.md` 系列（单次功能的临时计划存档）不同，本文件是
-> 唯一的、面向全工程生命周期的主计划。
+> 与 `docs/dev_plan_*.md` 系列（单次功能/plan-mode 计划的存档）不同，
+> 本文件是唯一的、面向全工程生命周期的主计划——只写里程碑摘要，不重复
+> 存档文件里的实施细节。
 
-最后更新：提交 `2812d2b`（分支 `claude/cfet-tcad-simulation-zh2kfo`）。
+最后更新：提交 `7880e2b`（分支 `claude/cfet-tcad-simulation-zh2kfo`）。
+
+## 0. Plan-mode 计划归档索引
+
+每次 `/plan` 模式生成并经批准执行的详细代码计划，完成后都归档到
+`docs/dev_plan_<slug>.md`（计划原文 + Context/改动/验证，末尾补一段
+"结果"）。当前归档：
+
+| 文件 | 主题 | 对应提交 |
+|---|---|---|
+| `dev_plan_paper_cfet_comparison.md` | 论文复现：FBC/SBC CFET 器件级对比（Ion/Ioff、迁移率标定旋钮） | `0e41666`→`0aa300e` |
+| `dev_plan_windows_exe_configs_bundling.md` | configs/ 示例设计打进两条 Windows exe 包 | `cee0109` |
+| `dev_plan_windows_exe_doctor_tempfile_fix.md` | doctor 命令 Windows 临时目录清理失败修复 | `60b1816` |
+
+（`e26dec9` 设计导入导出、Fig8/9 迁移率可视化等改动是直接执行或纯技术
+问答后的直接实现，未经过 `/plan` 模式，因此不在此索引——本索引只收
+plan-mode 产出的计划文件。）
 
 ## 1. 项目定位
 
@@ -25,11 +42,12 @@ Python + DEVSIM（漂移扩散求解器）+ gmsh（参数化网格）+ VTK/VisIt
 
 ## 2. 当前状态一览
 
-- **源码**：`src/cfet_tcad/` 约 5400 行（44 个模块文件）
-- **测试**：`tests/` 约 1500 行，**87 个测试**，含 5+ 组位精确交叉验证
-- **示例配置**：`configs/` 14 个 YAML（2D/3D 纳米片、CFET 堆叠、SiGe、
-  量子修正、VTC、论文复现 3 个）
-- **提交数**：35（主分支 `claude/cfet-tcad-simulation-zh2kfo`）
+- **源码**：`src/cfet_tcad/` 约 5200 行（44 个模块文件）
+- **测试**：`tests/` **90 个测试**，含 5+ 组位精确交叉验证
+- **示例配置**：`configs/` 16 个 YAML（2D/3D 纳米片、CFET 堆叠、SiGe、
+  量子修正、VTC、论文复现 5 个：Ion/Ioff 对比 3 个 + Lombardi 迁移率
+  可视化 2 个）
+- **提交数**：40（主分支 `claude/cfet-tcad-simulation-zh2kfo`）
 - **CI**：Linux 全套 pytest 自动跑（每次 push）；Windows 打包（PyInstaller
   + Nuitka 两条独立跑道）**手动触发**（`workflow_dispatch` 或 `v*` 标签）
 - **GUI**：PySide6 桌面工作台，5 大功能区（Experiments/Parameters/
@@ -95,20 +113,30 @@ Python + DEVSIM（漂移扩散求解器）+ gmsh（参数化网格）+ VTK/VisIt
     `sweep_summary.csv` 导出互通）
   - STL/PLY/VTP/OBJ 几何导出（CLI `--stl/--obj` + GUI Export 按钮）
 
-### Phase 8 — 论文复现（`0e41666`，进行中）
+### Phase 8 — 论文复现（`0e41666` → `7880e2b`，完成）
 复现 Applied Materials 论文《Complementary FET Device and Circuit Level
 Evaluation Using Fin-Based and Sheet-Based Configurations Targeting 3nm
-Node and Beyond》的器件级对比：
+Node and Beyond》的器件级对比（详见
+`docs/dev_plan_paper_cfet_comparison.md`）：
 
 - 新增 `physics.mobility_scale_n/p` 标定旋钮（面取向/应力/BTE 校准的
   低场迁移率乘数，1.0 时表达式字符级不变，不影响既有位精确交叉验证）
 - 三个论文尺寸配置：`configs/paper_{fbc,sbc,sbc31}_cfet_3d.yaml`
   （Lg 15nm、gate pitch 45nm、N-P 间距 30nm、sheet 18×5nm、fin 近似
   为旋转 GAA 5×18nm，2 片/器件，Vdd 0.7V）
-- `examples/paper_cfet_comparison.py`：恒 Ioff=1nA 提取 Ion，生成对比图
-  + `docs/paper_comparison.md` 报告，核对论文的 SBC nMOS +10%/pMOS
-  −5%（同有效宽度）、宽 sheet +73%/+47%（同占地面积）趋势
-- **状态**：三个 3D CFET 仿真在后台执行中，报告待生成
+- `examples/paper_cfet_comparison.py`：恒 Ioff=1nA 提取 Ion，核对论文的
+  SBC nMOS +10%/pMOS −5%（同有效宽度）、宽 sheet +73%/+47%（同占地
+  面积）趋势——本仿真得到 +7.7%/−9.1%、+48.9%/+28.0%，四项方向全部
+  一致，幅度差异在 `docs/paper_comparison.md` 里逐条解释（面取向迁移
+  率取文献值而非 BTE 标定、fin 用旋转 GAA 近似、无应力模型）
+- **Fig 4/8/9 风格图**（`docs/dev_plan_windows_exe_*`同批未涉及，属于
+  同一论文复现主题的延伸，非独立 plan-mode 计划）：`io/render3d.py`
+  新增 `sample_line()` + mobility 字段导出（`mu_*_lf_node` 点数据、
+  `mu_*_cvt` DEVSIM 自带的单元数据，均无需自建投影代码）；
+  `configs/paper_{fbc,sbc}_lombardi_cfet_3d.yaml` + 
+  `examples/paper_structure_mobility_figures.py` 产出结构剖面/3D
+  迁移率场/一维迁移率剖面三张图（`docs/paper_fig4_structure.png` 等，
+  局限说明见 `docs/paper_fig489_notes.md`）
 
 ## 4. 已知能力边界（明确声明，非缺陷）
 
@@ -131,11 +159,15 @@ Node and Beyond》的器件级对比：
 
 ## 6. 待办 / 下一步候选
 
-- [ ] 完成论文复现三组仿真，生成 `docs/paper_comparison.md` 对比报告
 - [ ] 视用户反馈决定是否重新手动触发 Windows 打包（当前 exe 落后于
-      设计导入导出、图标、改名等多轮更新）
+      设计导入导出、图标、改名、论文复现等多轮更新）
 - [ ] （可选）环振瞬态仿真——如果需要真正对标论文电路级结论，需新增
       寄生 RC 提取 + 瞬态求解模块，工作量较大，需用户明确需求后立项
+- [ ] （可选）Lombardi CVT 表面散射系数（b_ac/delta_sr）按面取向标定
+      ——目前只有低场基线（mobility_scale_n/p）区分 FBC/SBC，CVT 衰减
+      曲线本身两者相同；`docs/paper_fig489_notes.md` 有展开说明
+- [ ] （可选）Fig9 风格迁移率剖面加密限域方向网格（`ny_si` 从 5 提到
+      20+）以获得更平滑的对称衰减形状，当前受限于演示速度取舍
 
 ---
 *更新记录：本文件由 Claude 在里程碑节点手写维护，不做自动生成。*
