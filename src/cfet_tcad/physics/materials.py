@@ -38,6 +38,12 @@ class SemiconductorParams:
     # for the quantum-confinement strength, scaled further by dg_gamma_*
     m_dg_n: float = 0.3
     m_dg_p: float = 0.4
+    # Lombardi CVT surface scattering: acoustic phonon B [cm/s] and
+    # surface roughness delta [cm^2/Vs] (classic Si values)
+    b_ac_n: float = 4.75e7
+    b_ac_p: float = 9.925e6
+    delta_sr_n: float = 5.82e14
+    delta_sr_p: float = 2.055e14
 
     @property
     def midgap_workfunction_ev(self) -> float:

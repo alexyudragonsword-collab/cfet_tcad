@@ -6,6 +6,7 @@ from ..geometry.base import MeshLayout
 from ..geometry.params import DeviceParams
 from ..physics import equations as eq
 from ..physics.doping import create_doping
+from ..physics.lombardi import apply_lombardi_currents, rewire_lombardi_contact
 from ..physics.materials import MATERIALS, SILICON
 from ..physics.mobility import create_mobility
 from ..physics.quantum import create_density_gradient, create_dg_contact
@@ -48,6 +49,20 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     enable_extended_precision()
     oxide = MATERIALS[oxide_material]
 
+    lombardi = mobility_model == "lombardi_vsat"
+    if lombardi and layout.dimension != 2:
+        raise NotImplementedError(
+            "lombardi_vsat requires element assembly, implemented for 2D "
+            "regions only")
+    if lombardi and quantum_model != "none":
+        raise ValueError(
+            "lombardi_vsat and density_gradient cannot be combined yet "
+            "(the quantum currents are edge-based)")
+    # Lombardi starts from a converged classical system with the
+    # doping-dependent low-field mobility (its mu_*_lf edge models feed
+    # the CVT Matthiessen combination)
+    base_mobility = "doping" if lombardi else mobility_model
+
     silicon_regions = [r for r, m in layout.regions.items() if m == "Silicon"]
     oxide_regions = [r for r, m in layout.regions.items() if m == "Oxide"]
     gate_contacts = {c: r for c, r in layout.contacts.items()
@@ -84,7 +99,7 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     # promote to coupled drift-diffusion
     mobilities = {}
     for region in silicon_regions:
-        mu_n, mu_p = create_mobility(device, region, SILICON, mobility_model)
+        mu_n, mu_p = create_mobility(device, region, SILICON, base_mobility)
         mobilities[region] = (mu_n, mu_p)
         eq.create_silicon_dd(device, region, mu_n, mu_p)
     for contact in ohmic_contacts:
@@ -92,6 +107,15 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
             device, contact, circuit_node=circuit_contacts.get(contact))
 
     devsim.solve(**solver_args)
+
+    if lombardi:
+        for region in silicon_regions:
+            apply_lombardi_currents(device, region, SILICON)
+        for contact in ohmic_contacts:
+            rewire_lombardi_contact(
+                device, contact,
+                circuit_node=circuit_contacts.get(contact))
+        _solve_scale_homotopy(device, "cvt_scale", solver_args)
 
     if quantum_model == "density_gradient":
         # transport carrier only (per region): the minority carrier's DG
@@ -110,24 +134,25 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
         for contact, region in ohmic_contacts.items():
             create_dg_contact(device, contact,
                               carriers=carriers_of(region))
-        _solve_dg_with_homotopy(device, solver_args)
+        _solve_scale_homotopy(device, "dg_scale", solver_args)
     elif quantum_model != "none":
         raise ValueError(f"unknown quantum_model {quantum_model!r}")
 
 
-def _solve_dg_with_homotopy(device: str, solver_args: dict,
-                            min_step: float = 1e-3) -> None:
-    """Ramp the DG coefficient from the classical state to full strength.
+def _solve_scale_homotopy(device: str, param: str, solver_args: dict,
+                          min_step: float = 1e-3) -> None:
+    """Ramp a 0->1 strength parameter (dg_scale, cvt_scale) from the
+    classical state to full model strength.
 
-    Newton does not converge jumping straight from Lambda=0 to the full
-    quantum system, so dg_scale climbs a geometric ladder; on a failure the
-    step from the last converged scale is bisected (mirroring the adaptive
-    bias ramp in solve.sweep)."""
+    Newton may not converge jumping straight to the full model, so the
+    scale climbs a geometric ladder; on a failure the step from the last
+    converged scale is bisected (mirroring the adaptive bias ramp in
+    solve.sweep)."""
     good = 0.0
     targets = [0.01, 0.03, 0.1, 0.3, 0.6, 1.0]
     while targets:
         scale = targets[0]
-        devsim.set_parameter(device=device, name="dg_scale", value=scale)
+        devsim.set_parameter(device=device, name=param, value=scale)
         try:
             devsim.solve(**solver_args)
             good = scale

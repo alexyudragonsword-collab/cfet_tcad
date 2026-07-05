@@ -126,6 +126,17 @@ Caughey-Thomas 掺杂依赖低场迁移率 + Caughey-Thomas 速度饱和。
 迁移率表达式内联进 SG 电流公式，利用 DEVSIM 的模型感知符号求导
 （`diff()`）获得含场依赖项的精确 Newton 雅可比。
 
+**垂直场迁移率退化**（`mobility_model: lombardi_vsat`，2D 结构）：
+Lombardi (CVT) 表面声子 + 表面粗糙度散射，Matthiessen 与掺杂低场迁移率
+及速度饱和合成。垂直场 E⊥ 需要矢量场，用 DEVSIM element 级装配：
+`element_from_edge_model` 重构场分量，SG 电流改建为 element 模型接入
+连续性/接触方程（element 与 edge 电流在同迁移率下逐位一致，作为装配
+正确性测试固化在 test_lombardi 中）。经典求解收敛后经 `cvt_scale` 同伦
+升到全强度。默认 nFET 上的效应：线性区 Ion −28%（迁移率主导）、饱和区
+−11%（速度饱和掩盖）、SS/DIBL/Ioff 不变 —— 标准 CVT 指纹。注意
+element 表达式必须用 `@en*` 访问器书写（`@n0` 与 `@en0` 取值相同但
+求导独立，详见 physics/lombardi.py 模块注释）。暂不支持 3D 与 DG 组合。
+
 **量子修正**（`physics.quantum_model: density_gradient`，默认关闭）：
 Bohm 量子势 density-gradient 模型，输运载流子增加一个量子势解变量
 Λ（nFET 修正电子、pFET 修正空穴，全耦合 Newton）：
@@ -172,8 +183,10 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
 - **Phase 3**：完整 CFET 堆叠（nFET-on-pFET 共栅联合求解）✔；
   CFET 反相器 VTC（器件/电路混合求解）✔；3D CFET 堆叠 ✔
 - 参数扫描 / DOE（多进程并行，`cfet-tcad sweep`）✔
-- **后续方向**：Lombardi 垂直场迁移率（element 级场重构）、氧化层内
-  DG、多纳米片堆叠（每管 2-4 片）、应变/异质材料（SiGe pFET 沟道）
+- Lombardi (CVT) 垂直场迁移率（element 级装配，2D）✔
+- **后续方向**：Lombardi 扩展到 3D（@en0-3 四面体导数）、氧化层内 DG、
+  element 级量子电流（解除 lombardi×DG 互斥）、多纳米片堆叠、
+  应变/异质材料（SiGe pFET 沟道）
 
 ## 开发注意事项
 

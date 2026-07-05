@@ -31,6 +31,11 @@ class PhysicsConfig:
         if self.quantum_model not in QUANTUM_MODELS:
             raise ValueError(
                 f"quantum_model must be one of {QUANTUM_MODELS}")
+        if (self.mobility_model == "lombardi_vsat"
+                and self.quantum_model != "none"):
+            raise ValueError(
+                "mobility_model=lombardi_vsat cannot be combined with a "
+                "quantum_model yet (quantum currents are edge-based)")
 
 
 @dataclass

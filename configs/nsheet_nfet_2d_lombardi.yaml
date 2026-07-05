@@ -1,0 +1,41 @@
+# nFET nanosheet with Lombardi (CVT) vertical-field mobility degradation.
+# Identical device to nsheet_nfet_2d.yaml so fom.json diffs isolate the
+# surface-scattering effect (expect a large Ion reduction, unchanged
+# subthreshold behavior).
+device:
+  name: nsheet_nfet_cvt
+  polarity: n
+  l_gate_nm: 15.0
+  t_si_nm: 5.0
+  t_ox_nm: 1.0
+  l_sd_nm: 15.0
+  junction_lambda_nm: 1.5
+  sd_doping_cm3: 1.0e20
+  channel_doping_cm3: 1.0e15
+  gate_workfunction_ev: 4.50
+  sheet_width_nm: 20.0
+  n_sheets: 1
+
+mesh:
+  nx_sd: 24
+  nx_gate: 40
+  ny_si: 12
+  ny_ox: 4
+
+physics:
+  mobility_model: lombardi_vsat
+
+simulation:
+  type: idvg
+  vd: [0.05, 0.7]
+  vg_start: 0.0
+  vg_stop: 0.7
+  vg_step: 0.025
+
+output:
+  directory: results/nsheet_nfet_cvt
+  vtk: true
+  vtk_stride: 7
+
+extract:
+  icrit_a: 1.0e-8

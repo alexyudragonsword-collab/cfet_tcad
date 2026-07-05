@@ -22,7 +22,10 @@ from devsim.python_packages.model_create import CreateNodeModel
 
 from .materials import SemiconductorParams
 
-MOBILITY_MODELS = ("const", "doping", "doping_vsat")
+#: "lombardi_vsat" adds CVT vertical-field degradation via element-based
+#: currents (2D only); assembled in physics.lombardi after the classical
+#: system converges
+MOBILITY_MODELS = ("const", "doping", "doping_vsat", "lombardi_vsat")
 
 
 def _create_lowfield_edge_models(device: str, region: str,
@@ -56,6 +59,9 @@ def create_mobility(device: str, region: str, mat: SemiconductorParams,
     if model not in MOBILITY_MODELS:
         raise ValueError(
             f"unknown mobility model {model!r}, expected one of {MOBILITY_MODELS}")
+    if model == "lombardi_vsat":
+        raise ValueError("lombardi_vsat is assembled by physics.lombardi "
+                         "after the classical solve, not by create_mobility")
 
     if model == "const":
         return "mu_n", "mu_p"
