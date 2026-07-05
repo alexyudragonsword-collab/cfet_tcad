@@ -26,7 +26,12 @@ def cli_command() -> tuple[str, list[str]]:
     CLI executable sitting next to it instead of ``python -m``."""
     if getattr(sys, "frozen", False):
         name = "cfet-tcad.exe" if os.name == "nt" else "cfet-tcad"
-        return str(Path(sys.executable).with_name(name)), []
+        sibling = Path(sys.executable).with_name(name)
+        if sibling.exists():
+            return str(sibling), []
+        # single-exe dispatcher bundles (Nuitka): the same executable
+        # acts as the CLI when given arguments
+        return sys.executable, []
     return sys.executable, ["-m", "cfet_tcad.workflow.cli"]
 
 

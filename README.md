@@ -110,13 +110,21 @@ cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./r
 
 ### Windows 独立版（免装 Python）
 
-GitHub Actions 的 **Windows EXE** 工作流（手动触发或 `v*` 标签自动触发）
-用 PyInstaller 构建 onedir 独立包：Actions 运行页下载
-`cfet-tcad-windows-x64` 工件（打 tag 时同时附到 Release），解压后直接
-运行 `cfet-tcad-gui.exe`（工作台）或 `cfet-tcad.exe`（命令行，GUI 的
-每个仿真子进程也调用它）。包内含 DEVSIM+MKL、gmsh、Qt、VTK 全部运行时，
-Windows 11 x64 开箱即用。首次运行 SmartScreen 可能提示"未知发布者"
-（二进制未签名），选"仍要运行"即可。
+两条独立的 GitHub Actions 构建跑道（均在 `v*` 标签或 packaging 变更时
+触发，工件在 Actions 运行页下载，打 tag 时附到 Release），包内都含
+DEVSIM+MKL、gmsh、Qt、VTK 全部运行时，Windows 11 x64 免装 Python：
+
+- **Windows EXE**（PyInstaller）→ 工件 `cfet-tcad-windows-x64`：
+  onedir 双可执行 —— `cfet-tcad-gui.exe`（工作台）+ `cfet-tcad.exe`
+  （命令行，GUI 的每个仿真子进程也调用它）。
+- **Windows EXE (Nuitka)** → 工件 `cfet-tcad-windows-x64-nuitka`：
+  Nuitka 把 Python 编译为 C 后的单一 `cfet-tcad.exe` 分发器 ——
+  无参数启动 GUI，带参数即命令行（`--windows-console-mode=attach`：
+  终端里有输出、双击不弹黑框）；启动更快，首次构建耗时更长
+  （CI 有编译缓存）。
+
+首次运行 SmartScreen 可能提示"未知发布者"（二进制未签名），
+选"仍要运行"即可。
 
 每次运行在 `output.directory` 下产生：
 

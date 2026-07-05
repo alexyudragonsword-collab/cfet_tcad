@@ -1,0 +1,119 @@
+name: Windows EXE (Nuitka)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    # Nuitka compiles for a long time; branch pushes only trigger when
+    # the packaging inputs themselves change
+    branches: ["**"]
+    paths:
+      - ".github/workflows/windows-nuitka.yml"
+      - "packaging/**"
+
+concurrency:
+  group: nuitka-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      QT_QPA_PLATFORM: offscreen
+      NUITKA_CACHE_DIR: ${{ github.workspace }}/.nuitka-cache
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Nuitka compilation
+        uses: actions/cache@v4
+        with:
+          path: .nuitka-cache
+          key: nuitka-${{ runner.os }}-py311-${{ hashFiles('pyproject.toml') }}
+          restore-keys: nuitka-${{ runner.os }}-py311-
+
+      - name: Install package, Nuitka, and MKL (DEVSIM's Windows BLAS)
+        run: pip install -e ".[gui,viz]" nuitka mkl
+
+      - name: Compile standalone bundle
+        run: >
+          python -m nuitka packaging/entry_nuitka.py
+          --standalone
+          --assume-yes-for-downloads
+          --enable-plugin=pyside6
+          --include-package=cfet_tcad
+          --include-package-data=cfet_tcad
+          --include-package=devsim
+          --include-package-data=devsim
+          --include-package=vtkmodules
+          --include-package=pyvista
+          --include-package-data=pyvista
+          --include-package=pyvistaqt
+          --include-module=gmsh
+          --windows-console-mode=attach
+          --output-filename=cfet-tcad.exe
+          --output-dir=build
+          --jobs=4
+
+      - name: Bundle runtime DLLs (MKL + gmsh, installed outside packages)
+        run: |
+          python - <<'EOF'
+          import shutil, sys
+          from pathlib import Path
+          dist = Path("build/entry_nuitka.dist")
+          assert dist.is_dir(), dist
+          (dist / "lib").mkdir(exist_ok=True)
+          copied = []
+          for src in (Path(sys.prefix) / "Library" / "bin").glob("mkl_*.dll"):
+              shutil.copy2(src, dist); copied.append(src.name)
+          for src in (Path(sys.prefix) / "lib").glob("gmsh*.dll"):
+              shutil.copy2(src, dist)
+              shutil.copy2(src, dist / "lib")
+              copied.append(src.name)
+          print(f"copied {len(copied)} DLLs:", *copied[:6])
+          assert any(n.startswith("mkl_rt") for n in copied), "mkl_rt missing"
+          assert any(n.startswith("gmsh") for n in copied), "gmsh dll missing"
+          EOF
+
+      - name: Frozen smoke - CLI structure export (devsim+gmsh+MKL bundled)
+        run: |
+          ./build/entry_nuitka.dist/cfet-tcad.exe structure configs/nsheet_nfet_2d.yaml -o smoke_out
+          test -f smoke_out/vtk/structure.vtm
+          echo "frozen CLI OK"
+
+      - name: Frozen smoke - GUI boots offscreen (no-args dispatch)
+        run: |
+          python - <<'EOF'
+          import subprocess, time
+          p = subprocess.Popen(["./build/entry_nuitka.dist/cfet-tcad.exe"])
+          time.sleep(25)
+          alive = p.poll() is None
+          p.kill()
+          assert alive, f"GUI exited early with {p.returncode}"
+          print("frozen GUI OK (stayed up)")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cfet-tcad-windows-x64-nuitka
+          path: build/entry_nuitka.dist
+          compression-level: 6
+
+      - name: Zip for release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd build && 7z a ../cfet-tcad-windows-x64-nuitka.zip entry_nuitka.dist
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cfet-tcad-windows-x64-nuitka.zip
