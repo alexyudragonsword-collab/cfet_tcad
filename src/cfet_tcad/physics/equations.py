@@ -1,0 +1,302 @@
+"""DEVSIM equation assembly: nonlinear Poisson and drift-diffusion.
+
+Adapted from devsim.python_packages.simple_physics with two extensions:
+- pluggable mobility expressions (doping-dependent + velocity saturation)
+  inlined into the Scharfetter-Gummel currents so DEVSIM's model-aware
+  symbolic diff() produces exact Newton derivatives;
+- metal gate contacts with a configurable workfunction offset.
+
+Solution sequence per region: create the potential-only (nonlinear Poisson)
+system first, solve it, then promote to the coupled drift-diffusion system
+(:func:`create_silicon_dd` replaces the Poisson charge term).
+
+Phase 2 hook: a density-gradient quantum correction would add a generalized
+potential to the carrier models created here; see ``create_silicon_dd``.
+"""
+
+import devsim
+from devsim.python_packages.model_create import (
+    CreateContactNodeModel,
+    CreateEdgeModel,
+    CreateEdgeModelDerivatives,
+    CreateNodeModel,
+    CreateNodeModelDerivative,
+    CreateContinuousInterfaceModel,
+    CreateSolution,
+    InEdgeModelList,
+    InNodeModelList,
+)
+
+from .materials import EPS_0, K_B, Q, InsulatorParams, SemiconductorParams
+
+ECE_NAME = "ElectronContinuityEquation"
+HCE_NAME = "HoleContinuityEquation"
+
+# equilibrium carrier densities at an ohmic contact
+CELEC = "(1e-10 + 0.5*abs(NetDoping + (NetDoping^2 + 4*n_i^2)^(0.5)))"
+CHOLE = "(1e-10 + 0.5*abs(-NetDoping + (NetDoping^2 + 4*n_i^2)^(0.5)))"
+
+
+def contact_bias_name(contact: str) -> str:
+    return f"{contact}_bias"
+
+
+# --- parameters ---------------------------------------------------------
+
+def set_silicon_parameters(device: str, region: str,
+                           mat: SemiconductorParams, temperature: float,
+                           taun: float = 1e-7, taup: float = 1e-7) -> None:
+    p = devsim.set_parameter
+    p(device=device, region=region, name="Permittivity", value=mat.eps_r * EPS_0)
+    p(device=device, region=region, name="ElectronCharge", value=Q)
+    p(device=device, region=region, name="n_i", value=mat.n_i)
+    p(device=device, region=region, name="T", value=temperature)
+    p(device=device, region=region, name="kT", value=K_B * temperature)
+    p(device=device, region=region, name="V_t", value=K_B * temperature / Q)
+    # constant-mobility fallbacks (mobility model may override in currents)
+    p(device=device, region=region, name="mu_n", value=400.0)
+    p(device=device, region=region, name="mu_p", value=200.0)
+    # SRH
+    p(device=device, region=region, name="n1", value=mat.n_i)
+    p(device=device, region=region, name="p1", value=mat.n_i)
+    p(device=device, region=region, name="taun", value=taun)
+    p(device=device, region=region, name="taup", value=taup)
+
+
+def set_oxide_parameters(device: str, region: str,
+                         mat: InsulatorParams) -> None:
+    devsim.set_parameter(device=device, region=region, name="Permittivity",
+                         value=mat.eps_r * EPS_0)
+    devsim.set_parameter(device=device, region=region, name="ElectronCharge",
+                         value=Q)
+
+
+# --- potential-only (nonlinear Poisson) ---------------------------------
+
+def create_silicon_potential_only(device: str, region: str) -> None:
+    if not InNodeModelList(device, region, "Potential"):
+        CreateSolution(device, region, "Potential")
+        # charge-neutral initial guess: exact equilibrium potential far from
+        # junctions, which keeps Newton in the convergence basin at nm scale
+        neutral = (f"ifelse(NetDoping > 0, V_t*log({CELEC}/n_i),"
+                   f" -V_t*log({CHOLE}/n_i))")
+        CreateNodeModel(device, region, "NeutralPotential", neutral)
+        devsim.set_node_values(device=device, region=region,
+                               name="Potential",
+                               init_from="NeutralPotential")
+
+    intrinsics = (
+        ("IntrinsicElectrons", "n_i*exp(Potential/V_t)"),
+        ("IntrinsicHoles", "n_i^2/IntrinsicElectrons"),
+        ("IntrinsicCharge",
+         "kahan3(IntrinsicHoles, -IntrinsicElectrons, NetDoping)"),
+        ("PotentialIntrinsicCharge", "-ElectronCharge * IntrinsicCharge"),
+    )
+    for name, eq in intrinsics:
+        CreateNodeModel(device, region, name, eq)
+        CreateNodeModelDerivative(device, region, name, eq, "Potential")
+
+    for name, eq in (
+        ("ElectricField", "(Potential@n0 - Potential@n1)*EdgeInverseLength"),
+        ("PotentialEdgeFlux", "Permittivity * ElectricField"),
+    ):
+        CreateEdgeModel(device, region, name, eq)
+        CreateEdgeModelDerivatives(device, region, name, eq, "Potential")
+
+    devsim.equation(device=device, region=region, name="PotentialEquation",
+                    variable_name="Potential",
+                    node_model="PotentialIntrinsicCharge",
+                    edge_model="PotentialEdgeFlux",
+                    variable_update="log_damp")
+
+
+def create_oxide_potential_only(device: str, region: str) -> None:
+    if not InNodeModelList(device, region, "Potential"):
+        CreateSolution(device, region, "Potential")
+    efield = "(Potential@n0 - Potential@n1)*EdgeInverseLength"
+    CreateEdgeModel(device, region, "ElectricField", efield)
+    CreateEdgeModelDerivatives(device, region, "ElectricField", efield,
+                               "Potential")
+    dfield = "Permittivity*ElectricField"
+    CreateEdgeModel(device, region, "PotentialEdgeFlux", dfield)
+    CreateEdgeModelDerivatives(device, region, "PotentialEdgeFlux", dfield,
+                               "Potential")
+    devsim.equation(device=device, region=region, name="PotentialEquation",
+                    variable_name="Potential",
+                    edge_model="PotentialEdgeFlux",
+                    variable_update="default")
+
+
+# --- contacts ------------------------------------------------------------
+
+def _ensure_contact_charge_edge(device: str, region: str) -> None:
+    if not InEdgeModelList(device, region, "contactcharge_edge"):
+        CreateEdgeModel(device, region, "contactcharge_edge",
+                        "Permittivity*ElectricField")
+        CreateEdgeModelDerivatives(device, region, "contactcharge_edge",
+                                   "Permittivity*ElectricField", "Potential")
+
+
+def create_ohmic_potential_contact(device: str, region: str,
+                                   contact: str) -> None:
+    """Ohmic contact (source/drain): pins Potential to bias + built-in."""
+    _ensure_contact_charge_edge(device, region)
+    bias = contact_bias_name(contact)
+    devsim.set_parameter(device=device, name=bias, value=0.0)
+    model = (f"Potential - {bias} + ifelse(NetDoping > 0,"
+             f" -V_t*log({CELEC}/n_i), V_t*log({CHOLE}/n_i))")
+    name = f"{contact}nodemodel"
+    CreateContactNodeModel(device, contact, name, model)
+    CreateContactNodeModel(device, contact, f"{name}:Potential", "1")
+    devsim.contact_equation(device=device, contact=contact,
+                            name="PotentialEquation",
+                            node_model=name,
+                            edge_charge_model="contactcharge_edge")
+
+
+def create_gate_contact(device: str, region: str, contact: str,
+                        workfunction_ev: float,
+                        semiconductor: SemiconductorParams) -> None:
+    """Metal gate on oxide.
+
+    Potential is referenced to the silicon intrinsic Fermi level, so the
+    gate boundary condition is  Potential = bias - (WF - WF_midgap).
+    """
+    _ensure_contact_charge_edge(device, region)
+    bias = contact_bias_name(contact)
+    offset = workfunction_ev - semiconductor.midgap_workfunction_ev
+    devsim.set_parameter(device=device, name=bias, value=0.0)
+    devsim.set_parameter(device=device, name=f"{contact}_wf_offset",
+                         value=offset)
+    model = f"Potential - {bias} + {contact}_wf_offset"
+    name = f"{contact}nodemodel"
+    CreateContactNodeModel(device, contact, name, model)
+    CreateContactNodeModel(device, contact, f"{name}:Potential", "1")
+    devsim.contact_equation(device=device, contact=contact,
+                            name="PotentialEquation",
+                            node_model=name,
+                            edge_charge_model="contactcharge_edge")
+
+
+def create_ohmic_dd_contact(device: str, contact: str) -> None:
+    """Pin carriers to their equilibrium values; integrate contact current."""
+    elec = f"Electrons - ifelse(NetDoping > 0, {CELEC}, n_i^2/{CHOLE})"
+    hole = f"Holes - ifelse(NetDoping < 0, {CHOLE}, n_i^2/{CELEC})"
+    ename = f"{contact}nodeelectrons"
+    hname = f"{contact}nodeholes"
+    CreateContactNodeModel(device, contact, ename, elec)
+    CreateContactNodeModel(device, contact, f"{ename}:Electrons", "1")
+    CreateContactNodeModel(device, contact, hname, hole)
+    CreateContactNodeModel(device, contact, f"{hname}:Holes", "1")
+    devsim.contact_equation(device=device, contact=contact, name=ECE_NAME,
+                            node_model=ename,
+                            edge_current_model="ElectronCurrent")
+    devsim.contact_equation(device=device, contact=contact, name=HCE_NAME,
+                            node_model=hname,
+                            edge_current_model="HoleCurrent")
+
+
+# --- drift-diffusion -----------------------------------------------------
+
+def _create_bernoulli(device: str, region: str) -> None:
+    CreateEdgeModel(device, region, "vdiff",
+                    "(Potential@n0 - Potential@n1)/V_t")
+    CreateEdgeModel(device, region, "vdiff:Potential@n0", "V_t^(-1)")
+    CreateEdgeModel(device, region, "vdiff:Potential@n1",
+                    "-vdiff:Potential@n0")
+    CreateEdgeModel(device, region, "Bern01", "B(vdiff)")
+    CreateEdgeModel(device, region, "Bern01:Potential@n0",
+                    "dBdx(vdiff) * vdiff:Potential@n0")
+    CreateEdgeModel(device, region, "Bern01:Potential@n1",
+                    "-Bern01:Potential@n0")
+
+
+def _create_srh(device: str, region: str) -> None:
+    usrh = ("(Electrons*Holes - n_i^2)"
+            "/(taup*(Electrons + n1) + taun*(Holes + p1))")
+    gn = "-ElectronCharge * USRH"
+    gp = "+ElectronCharge * USRH"
+    CreateNodeModel(device, region, "USRH", usrh)
+    CreateNodeModel(device, region, "ElectronGeneration", gn)
+    CreateNodeModel(device, region, "HoleGeneration", gp)
+    for var in ("Electrons", "Holes"):
+        CreateNodeModelDerivative(device, region, "USRH", usrh, var)
+        CreateNodeModelDerivative(device, region, "ElectronGeneration", gn, var)
+        CreateNodeModelDerivative(device, region, "HoleGeneration", gp, var)
+
+
+def create_silicon_dd(device: str, region: str,
+                      mu_n_expr: str = "mu_n",
+                      mu_p_expr: str = "mu_p") -> None:
+    """Promote a potential-only silicon region to coupled drift-diffusion.
+
+    ``mu_n_expr`` / ``mu_p_expr`` are expression strings from
+    :func:`cfet_tcad.physics.mobility.create_mobility`, inlined into the
+    Scharfetter-Gummel currents.  diff() resolves named sub-models through
+    their ``model:variable`` derivative models (Bern01, vdiff) and treats
+    derivative-free models (mu_*_lf) as constants, so Newton derivatives
+    stay exact for the field-dependent parts written inline.
+    """
+    for carrier in ("Electrons", "Holes"):
+        if not InNodeModelList(device, region, carrier):
+            CreateSolution(device, region, carrier)
+            devsim.set_node_values(
+                device=device, region=region, name=carrier,
+                init_from="IntrinsicElectrons" if carrier == "Electrons"
+                else "IntrinsicHoles")
+
+    # Poisson with solved carriers
+    pne = "-ElectronCharge*kahan3(Holes, -Electrons, NetDoping)"
+    CreateNodeModel(device, region, "PotentialNodeCharge", pne)
+    CreateNodeModelDerivative(device, region, "PotentialNodeCharge", pne,
+                              "Electrons", "Holes")
+    devsim.equation(device=device, region=region, name="PotentialEquation",
+                    variable_name="Potential",
+                    node_model="PotentialNodeCharge",
+                    edge_model="PotentialEdgeFlux",
+                    variable_update="log_damp")
+
+    _create_bernoulli(device, region)
+    _create_srh(device, region)
+
+    jn = (f"ElectronCharge*{mu_n_expr}*EdgeInverseLength*V_t*"
+          "kahan3(Electrons@n1*Bern01, Electrons@n1*vdiff,"
+          " -Electrons@n0*Bern01)")
+    CreateEdgeModel(device, region, "ElectronCurrent", jn)
+    for var in ("Potential", "Electrons", "Holes"):
+        CreateEdgeModelDerivatives(device, region, "ElectronCurrent", jn, var)
+
+    jp = (f"-ElectronCharge*{mu_p_expr}*EdgeInverseLength*V_t*"
+          "kahan3(Holes@n1*Bern01, -Holes@n0*Bern01, -Holes@n0*vdiff)")
+    CreateEdgeModel(device, region, "HoleCurrent", jp)
+    for var in ("Potential", "Electrons", "Holes"):
+        CreateEdgeModelDerivatives(device, region, "HoleCurrent", jp, var)
+
+    ncharge = "-ElectronCharge * Electrons"
+    CreateNodeModel(device, region, "NCharge", ncharge)
+    CreateNodeModelDerivative(device, region, "NCharge", ncharge, "Electrons")
+    devsim.equation(device=device, region=region, name=ECE_NAME,
+                    variable_name="Electrons",
+                    time_node_model="NCharge",
+                    edge_model="ElectronCurrent",
+                    node_model="ElectronGeneration",
+                    variable_update="positive")
+
+    pcharge = "ElectronCharge * Holes"
+    CreateNodeModel(device, region, "PCharge", pcharge)
+    CreateNodeModelDerivative(device, region, "PCharge", pcharge, "Holes")
+    devsim.equation(device=device, region=region, name=HCE_NAME,
+                    variable_name="Holes",
+                    time_node_model="PCharge",
+                    edge_model="HoleCurrent",
+                    node_model="HoleGeneration",
+                    variable_update="positive")
+
+
+# --- interfaces -----------------------------------------------------------
+
+def create_semiconductor_oxide_interface(device: str, interface: str) -> None:
+    model = CreateContinuousInterfaceModel(device, interface, "Potential")
+    devsim.interface_equation(device=device, interface=interface,
+                              name="PotentialEquation",
+                              interface_model=model, type="continuous")

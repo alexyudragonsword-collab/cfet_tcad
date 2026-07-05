@@ -1,0 +1,28 @@
+# nFET nanosheet - Id-Vd output characteristics at several gate biases
+device:
+  name: nsheet_nfet_idvd
+  polarity: n
+  l_gate_nm: 15.0
+  t_si_nm: 5.0
+  t_ox_nm: 1.0
+  l_sd_nm: 15.0
+  junction_lambda_nm: 1.5
+  sd_doping_cm3: 1.0e20
+  channel_doping_cm3: 1.0e15
+  gate_workfunction_ev: 4.50
+  sheet_width_nm: 20.0
+  n_sheets: 1
+
+physics:
+  mobility_model: doping_vsat
+
+simulation:
+  type: idvd
+  vg: [0.4, 0.55, 0.7]
+  vd_start: 0.0
+  vd_stop: 0.7
+  vd_step: 0.025
+
+output:
+  directory: results/nsheet_nfet_idvd
+  vtk: false
