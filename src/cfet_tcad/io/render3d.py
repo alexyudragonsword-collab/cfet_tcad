@@ -140,6 +140,37 @@ def render_structure(vtk_dir: Path, png: Path | None = None,
     return plotter
 
 
+def export_surface(vtk_dir: Path, path: Path,
+                   prefix: str | None = None) -> Path:
+    """Design export: device boundary surface as STL / PLY / VTP.
+
+    Pure mesh processing (no OpenGL), so it works in any environment.
+    STL carries geometry only; PLY/VTP keep per-cell data too.
+    """
+    meshes = load_snapshot(vtk_dir, prefix)
+    surface = pv.merge([m.extract_surface() for m in meshes])
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".stl":
+        surface = surface.triangulate()  # STL is triangles-only
+    surface.save(str(path))
+    return path
+
+
+def export_obj(vtk_dir: Path, path: Path, prefix: str | None = None,
+               field: str | None = None) -> Path:
+    """Design export: colored OBJ (+ .mtl) via an off-screen render of
+    the material-colored scene.  Needs a GL context (like screenshots)."""
+    meshes = load_snapshot(vtk_dir, prefix)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    plotter = pv.Plotter(off_screen=True)
+    add_device(plotter, meshes, field=field)
+    plotter.export_obj(str(path))
+    plotter.close()
+    return path
+
+
 def field_choices(meshes: list[pv.DataSet]) -> list[str]:
     """Node fields worth offering in a UI, present in any region."""
     interesting = ("NetDoping", "Potential", "Electrons", "Holes",

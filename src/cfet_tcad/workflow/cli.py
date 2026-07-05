@@ -30,14 +30,26 @@ def main(argv=None) -> int:
     struct_p.add_argument("-o", "--output", type=Path, default=None)
     struct_p.add_argument("--png", type=Path, default=None,
                           help="also render a 3D image (requires pyvista)")
+    struct_p.add_argument("--stl", type=Path, default=None,
+                          help="export the device surface as STL "
+                               "(.ply/.vtp also work; no GL needed)")
+    struct_p.add_argument("--obj", type=Path, default=None,
+                          help="export a material-colored OBJ + MTL "
+                               "(needs GL, like --png)")
 
     sweep_p = sub.add_parser(
         "sweep", help="parametric sweep: one process per point")
     sweep_p.add_argument("config", type=Path)
-    sweep_p.add_argument("-p", "--param", action="append", required=True,
-                         metavar="PATH=V1,V2,...",
-                         help="e.g. device.l_gate_nm=12,15,18 "
-                              "(repeat for a cartesian product)")
+    point_src = sweep_p.add_mutually_exclusive_group(required=True)
+    point_src.add_argument("-p", "--param", action="append",
+                           metavar="PATH=V1,V2,...",
+                           help="e.g. device.l_gate_nm=12,15,18 "
+                                "(repeat for a cartesian product)")
+    point_src.add_argument("--points", type=Path, default=None,
+                           metavar="CSV",
+                           help="design-point table: one row per run, "
+                                "dotted config paths as headers "
+                                "(an edited sweep_summary.csv works)")
     sweep_p.add_argument("-j", "--jobs", type=int, default=1)
     sweep_p.add_argument("-o", "--output", type=Path, default=None)
     sweep_p.add_argument("--zip", action="store_true", dest="zip_params",
@@ -49,12 +61,16 @@ def main(argv=None) -> int:
 
     if args.command == "sweep":
         from .config import load_config
-        from .sweep import parse_param_spec, run_sweep
-        params = dict(parse_param_spec(s) for s in args.param)
+        from .sweep import load_points_csv, parse_param_spec, run_sweep
+        params = points = None
+        if args.points is not None:
+            points = load_points_csv(args.points)
+        else:
+            params = dict(parse_param_spec(s) for s in args.param)
         cfg = load_config(args.config)
         out = Path(args.output or f"{cfg.output.directory}_sweep")
         rows = run_sweep(args.config, params, out, jobs=args.jobs,
-                         zip_params=args.zip_params)
+                         zip_params=args.zip_params, points=points)
         n_ok = sum(1 for r in rows if r.get("status") == "ok")
         print(f"{n_ok}/{len(rows)} points completed; summary in {out}/")
         return 0 if n_ok == len(rows) else 1
@@ -75,7 +91,7 @@ def main(argv=None) -> int:
 
         from ..geometry import BUILDERS
         from ..meshio_devsim import load_mesh
-        from ..physics.doping import create_doping
+        from ..physics.doping import create_doping_from_spec
 
         out = Path(args.output or cfg.output.directory)
         out.mkdir(parents=True, exist_ok=True)
@@ -86,7 +102,9 @@ def main(argv=None) -> int:
             if material == "Silicon":
                 polarity = layout.silicon_polarity.get(
                     region, cfg.device.polarity)
-                create_doping(device, region, cfg.device, polarity=polarity)
+                create_doping_from_spec(
+                    device, region, cfg.device, polarity=polarity,
+                    spec=layout.doping_specs.get(region))
         vtk_dir = out / "vtk"
         vtk_dir.mkdir(exist_ok=True)
         devsim.write_devices(file=str(vtk_dir / "structure"), type="vtk")
@@ -95,6 +113,12 @@ def main(argv=None) -> int:
             from ..io.render3d import render_structure
             render_structure(vtk_dir, png=args.png, field="NetDoping")
             print(f"rendered: {args.png}")
+        if args.stl:
+            from ..io.render3d import export_surface
+            print(f"surface exported: {export_surface(vtk_dir, args.stl)}")
+        if args.obj:
+            from ..io.render3d import export_obj
+            print(f"OBJ exported: {export_obj(vtk_dir, args.obj)}")
         return 0
 
     from .runner import run_config

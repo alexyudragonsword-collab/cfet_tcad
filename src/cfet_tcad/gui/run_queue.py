@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 from PySide6.QtCore import QObject, QProcess, Signal
 
-from ..workflow.config import apply_overrides
+from ..workflow.config import apply_overrides, resolve_external_mesh
 from .experiment_table import Experiment, ExperimentModel, fom_summary
 
 
@@ -59,6 +59,9 @@ class RunQueue(QObject):
             Path(base_config).read_text(encoding="utf-8")) or {}
         if overrides:
             raw = apply_overrides(raw, overrides)
+        # the point config lands in out_dir: pin a relative external mesh
+        # to the base config's directory before the copy moves it
+        resolve_external_mesh(raw, Path(base_config).parent)
         cfg = out_dir / "config.yaml"
         cfg.write_text(yaml.safe_dump(raw, sort_keys=False),
                        encoding="utf-8")

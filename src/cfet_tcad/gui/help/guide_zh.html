@@ -96,6 +96,12 @@ device.channel_material_p=Silicon,SiGe15,SiGe30,SiGe45
 device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
 </pre>
 
+<p><b>Import CSV&hellip;</b> 按钮可从设计点表格填充对话框（每行一次
+仿真,列名为点分配置路径）&mdash; 上次扫描导出的
+<code>sweep_summary.csv</code> 改一改即可直接回灌,状态/FOM 列自动
+忽略。命令行等价: <code>cfet-tcad sweep base.yaml --points
+doe.csv</code>。</p>
+
 <hr>
 <h2>4. 器件结构</h2>
 
@@ -114,6 +120,32 @@ device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
 <code>junction_lambda_nm</code>（高斯结尾长度）。V<sub>t</sub> 由栅金属
 设定：单管用 <code>gate_workfunction_ev</code>，CFET 用
 <code>gate_workfunction_n_ev</code>/<code>_p_ev</code>。</p>
+
+<p><b>设计导入 &mdash; 外部网格。</b>设
+<code>structure: external</code> 可直接仿真用户自备的 gmsh MSH 2.2
+ASCII 网格（坐标单位 cm）。<code>device.external</code> 段把文件里的
+物理组映射到 region / contact / interface,并为每个硅区指定掺杂方式
+（<code>lateral_sd</code> 解析剖面 / <code>uniform</code> 均匀 /
+<code>expression</code> 任意 DEVSIM x/y/z 表达式）：</p>
+
+<pre>
+device:
+  structure: external
+  external:
+    mesh_file: my_device.msh      # 相对配置文件所在目录
+    dimension: 2
+    regions:    {bulk: Silicon, gox: Oxide}
+    contacts:   {source: bulk, drain: bulk, gate: gox}
+    interfaces: {si_ox: [bulk, gox]}
+    doping:
+      bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
+</pre>
+
+<p><b>设计导出。</b>Structure 3D 标签页的 <b>Export&hellip;</b> 按钮
+（或 <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj
+dev.obj</code>）把器件几何导出为 STL/PLY/VTP 表面网格,或带材质颜色的
+OBJ+MTL,供 CAD 与展示工具使用。仿真结果本身始终同时落盘 CSV、
+fom.json、VTK（VisIt/ParaView）与 gmsh .msh。</p>
 
 <hr>
 <h2>5. 物理模型</h2>

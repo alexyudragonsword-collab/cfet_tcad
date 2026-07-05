@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QSpinBox,
     QSplitter,
     QTableView,
@@ -44,7 +45,8 @@ from .structure_view import StructureView
 
 
 class SweepDialog(QDialog):
-    """Parameter specs, one per line: path=v1,v2,... (SWB experiment grid)."""
+    """Parameter specs, one per line: path=v1,v2,... (SWB experiment grid).
+    A DOE table can also be imported from CSV (rows = design points)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,15 +59,39 @@ class SweepDialog(QDialog):
         self.jobs = QSpinBox()
         self.jobs.setRange(1, 16)
         self.jobs.setValue(2)
+        import_btn = QPushButton("Import CSV...")
+        import_btn.setToolTip(
+            "design-point table: dotted config paths as headers, one row "
+            "per run (an edited sweep_summary.csv works)")
+        import_btn.clicked.connect(self._import_csv)
         form = QFormLayout(self)
         form.addRow("parameters", self.specs)
         form.addRow("", self.zip_box)
+        form.addRow("", import_btn)
         form.addRow("max parallel", self.jobs)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok
                                    | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+    def _import_csv(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import design points", "", "CSV (*.csv);;All files (*)")
+        if path:
+            try:
+                self.load_points_csv(Path(path))
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, "Import failed", str(exc))
+
+    def load_points_csv(self, path: Path) -> None:
+        """Fill the dialog from a design-point CSV: rows become paired
+        tuples, i.e. spec lines in zip mode."""
+        from ..workflow.sweep import load_points_csv, points_to_zip_specs
+
+        self.specs.setPlainText(
+            "\n".join(points_to_zip_specs(load_points_csv(path))))
+        self.zip_box.setChecked(True)
 
 
 class MainWindow(QMainWindow):

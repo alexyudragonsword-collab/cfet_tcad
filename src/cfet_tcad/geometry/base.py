@@ -39,6 +39,10 @@ class MeshLayout:
     #: gate contact -> the semiconductor region it gates (fixes the
     #: midgap workfunction reference in heteromaterial stacks)
     gate_semiconductors: dict = field(default_factory=dict)
+    #: silicon region -> doping spec dict (external meshes; see
+    #: physics.doping.create_doping_from_spec); empty = analytic
+    #: lateral S/D profile from DeviceParams, today's behavior
+    doping_specs: dict = field(default_factory=dict)
 
 
 class GeometryBuilder(ABC):

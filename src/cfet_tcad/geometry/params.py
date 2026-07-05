@@ -8,6 +8,9 @@ from dataclasses import dataclass
 
 NM_TO_CM = 1.0e-7
 
+#: doping profile kinds accepted in an external-mesh doping spec
+DOPING_PROFILES = ("lateral_sd", "uniform", "expression")
+
 
 @dataclass
 class DeviceParams:
@@ -20,8 +23,13 @@ class DeviceParams:
 
     name: str = "nanosheet"
     polarity: str = "n"  # "n" (CFET top device) or "p" (CFET bottom device)
-    # "nanosheet_2d" | "gaa_3d" | "cfet_2d" | "cfet_3d"
+    # "nanosheet_2d" | "gaa_3d" | "cfet_2d" | "cfet_3d" | "external"
     structure: str = "nanosheet_2d"
+
+    # structure == "external": user-supplied gmsh MSH 2.2 mesh plus the
+    # physical-group mapping the DEVSIM loader needs (see
+    # geometry.external.ExternalMeshBuilder for the schema)
+    external: dict | None = None
 
     # geometry [nm]
     l_gate_nm: float = 15.0
@@ -56,7 +64,7 @@ class DeviceParams:
     def __post_init__(self):
         if self.polarity not in ("n", "p"):
             raise ValueError(f"polarity must be 'n' or 'p', got {self.polarity!r}")
-        valid = ("nanosheet_2d", "gaa_3d", "cfet_2d", "cfet_3d")
+        valid = ("nanosheet_2d", "gaa_3d", "cfet_2d", "cfet_3d", "external")
         if self.structure not in valid:
             raise ValueError(
                 f"structure must be one of {valid}, got {self.structure!r}")
@@ -65,6 +73,55 @@ class DeviceParams:
                      "sheet_width_nm"):
             if getattr(self, attr) <= 0:
                 raise ValueError(f"{attr} must be positive")
+        self._validate_external()
+
+    def _validate_external(self) -> None:
+        if self.structure != "external":
+            if self.external is not None:
+                raise ValueError("device.external is only valid with "
+                                 "structure: external")
+            return
+        ext = self.external
+        if not isinstance(ext, dict):
+            raise ValueError("structure: external requires a device.external "
+                             "mapping (mesh_file, dimension, regions, "
+                             "contacts, ...)")
+        for key in ("mesh_file", "dimension", "regions", "contacts"):
+            if not ext.get(key):
+                raise ValueError(f"device.external.{key} is required")
+        if int(ext["dimension"]) not in (2, 3):
+            raise ValueError("device.external.dimension must be 2 or 3")
+        for region, material in ext["regions"].items():
+            if material not in ("Silicon", "Oxide"):
+                raise ValueError(
+                    f"device.external.regions[{region!r}] must be 'Silicon' "
+                    f"or 'Oxide' (DEVSIM material), got {material!r}")
+        for contact, region in ext["contacts"].items():
+            if region not in ext["regions"]:
+                raise ValueError(
+                    f"device.external.contacts[{contact!r}] references "
+                    f"unknown region {region!r}")
+        for name, pair in (ext.get("interfaces") or {}).items():
+            if (not isinstance(pair, (list, tuple)) or len(pair) != 2
+                    or any(r not in ext["regions"] for r in pair)):
+                raise ValueError(
+                    f"device.external.interfaces[{name!r}] must be a pair "
+                    f"of declared regions, got {pair!r}")
+        for region, spec in (ext.get("doping") or {}).items():
+            if region not in ext["regions"]:
+                raise ValueError(
+                    f"device.external.doping[{region!r}] references an "
+                    f"undeclared region")
+            profile = (spec or {}).get("profile", "lateral_sd")
+            if profile not in DOPING_PROFILES:
+                raise ValueError(
+                    f"device.external.doping[{region!r}].profile must be "
+                    f"one of {DOPING_PROFILES}, got {profile!r}")
+            if profile == "expression" and not (
+                    spec.get("donors") and spec.get("acceptors")):
+                raise ValueError(
+                    f"device.external.doping[{region!r}]: expression "
+                    f"profile needs 'donors' and 'acceptors'")
 
     # --- derived quantities in cm ---
     @property

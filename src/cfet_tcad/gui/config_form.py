@@ -45,7 +45,8 @@ SECTIONS = (
 _MATERIAL_CHOICES = ["Silicon", "SiGe15", "SiGe30", "SiGe45"]
 CHOICES = {
     ("device", "polarity"): ["n", "p"],
-    ("device", "structure"): ["nanosheet_2d", "gaa_3d", "cfet_2d", "cfet_3d"],
+    ("device", "structure"): ["nanosheet_2d", "gaa_3d", "cfet_2d",
+                              "cfet_3d", "external"],
     ("device", "channel_material"): _MATERIAL_CHOICES,
     ("device", "channel_material_n"): _MATERIAL_CHOICES,
     ("device", "channel_material_p"): _MATERIAL_CHOICES,

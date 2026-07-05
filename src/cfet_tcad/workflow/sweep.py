@@ -18,24 +18,80 @@ import os
 from pathlib import Path
 
 
+def _coerce(value: str):
+    """CSV/CLI string -> int, float, or str (in that preference order)."""
+    value = value.strip()
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            return value
+
+
 def parse_param_spec(spec: str) -> tuple[str, list]:
     """'device.l_gate_nm=12,15,18' -> ('device.l_gate_nm', [12.0, 15.0, 18.0])"""
     if "=" not in spec:
         raise ValueError(f"expected PATH=v1,v2,... got {spec!r}")
     path, _, values = spec.partition("=")
-    parsed = []
-    for v in values.split(","):
-        v = v.strip()
-        try:
-            parsed.append(int(v))
-        except ValueError:
-            try:
-                parsed.append(float(v))
-            except ValueError:
-                parsed.append(v)
+    parsed = [_coerce(v) for v in values.split(",")]
     if not parsed:
         raise ValueError(f"no values in {spec!r}")
     return path.strip(), parsed
+
+
+#: config sections a CSV column must start with to count as a parameter
+CONFIG_SECTIONS = ("device", "mesh", "physics", "simulation", "output",
+                   "extract")
+
+
+def load_points_csv(path: Path) -> list[dict]:
+    """Design-point import: one row per simulation, columns are dotted
+    config paths (device.l_gate_nm, physics.mobility_model, ...).
+
+    Columns whose first path segment is not a config section are ignored
+    (with a notice) - so an exported ``sweep_summary.csv`` can be edited
+    and fed straight back in; its status/FOM columns just drop out.
+    """
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if not reader.fieldnames:
+            raise ValueError(f"{path}: empty CSV")
+        cols = [c.strip() for c in reader.fieldnames]
+        params = [c for c in cols if c.split(".")[0] in CONFIG_SECTIONS]
+        ignored = [c for c in cols if c not in params]
+        if not params:
+            raise ValueError(
+                f"{path}: no parameter columns; headers must be dotted "
+                f"config paths starting with one of {CONFIG_SECTIONS}")
+        if ignored:
+            print(f"ignoring non-parameter column(s): {ignored}")
+        points = []
+        for row in reader:
+            cleaned = {(k or "").strip(): (v or "") for k, v in row.items()}
+            point = {c: _coerce(cleaned[c]) for c in params
+                     if cleaned.get(c, "").strip() != ""}
+            if point:
+                points.append(point)
+    if not points:
+        raise ValueError(f"{path}: no data rows")
+    return points
+
+
+def points_to_zip_specs(points: list[dict]) -> list[str]:
+    """Rewrite a point list as ``path=v1,v2,...`` lines (zip semantics),
+    the form the GUI sweep dialog edits.  Missing cells repeat the
+    column's previous value so all lists stay equally long."""
+    columns = list(dict.fromkeys(k for p in points for k in p))
+    lines = []
+    for col in columns:
+        values, last = [], ""
+        for p in points:
+            last = p.get(col, last)
+            values.append(str(last))
+        lines.append(f"{col}={','.join(values)}")
+    return lines
 
 
 def _flatten(prefix: str, obj, out: dict) -> None:
@@ -77,27 +133,40 @@ def _run_point(args) -> dict:
     return row
 
 
-def run_sweep(base_config: Path, params: dict, out_dir: Path,
-              jobs: int = 1, zip_params: bool = False) -> list[dict]:
+def run_sweep(base_config: Path, params: dict | None, out_dir: Path,
+              jobs: int = 1, zip_params: bool = False,
+              points: list[dict] | None = None) -> list[dict]:
     """Run a parameter grid: the cartesian product of ``params``
     (path -> value list), or — with ``zip_params`` — the value lists
     advanced together as paired tuples (all lists must be equally long;
     used for coupled knobs such as a Ge-fraction sweep that must retune
-    the gate workfunction at each composition to hold Vt)."""
+    the gate workfunction at each composition to hold Vt).
+
+    Alternatively pass explicit ``points`` (one override dict per
+    simulation, e.g. from :func:`load_points_csv`) instead of a grid.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    names = list(params)
-    if zip_params:
-        lengths = {n: len(params[n]) for n in names}
-        if len(set(lengths.values())) > 1:
-            raise ValueError(
-                f"--zip requires equally long value lists, got {lengths}")
-        points = [dict(zip(names, combo))
-                  for combo in zip(*(params[n] for n in names))]
+    if (points is None) == (params is None):
+        raise ValueError("pass exactly one of params or points")
+    paired = zip_params or points is not None
+    if points is not None:
+        names = list(dict.fromkeys(k for p in points for k in p))
+        # per-column value lists drive the trend-plot axis pick below
+        params = {n: [p[n] for p in points if n in p] for n in names}
     else:
-        points = [dict(zip(names, combo))
-                  for combo in itertools.product(*(params[n] for n in names))]
+        names = list(params)
+        if zip_params:
+            lengths = {n: len(params[n]) for n in names}
+            if len(set(lengths.values())) > 1:
+                raise ValueError(
+                    f"--zip requires equally long value lists, got {lengths}")
+            points = [dict(zip(names, combo))
+                      for combo in zip(*(params[n] for n in names))]
+        else:
+            points = [dict(zip(names, combo)) for combo in
+                      itertools.product(*(params[n] for n in names))]
     tasks = []
     for i, overrides in enumerate(points):
         tag = "_".join(f"{p.split('.')[-1]}{v}" for p, v in overrides.items())
@@ -115,10 +184,10 @@ def run_sweep(base_config: Path, params: dict, out_dir: Path,
                 rows.append(pool.map(_run_point, [t])[0])
 
     _write_summary(out_dir, names, rows)
-    # trend plot: 1D numeric sweeps, or zipped sweeps keyed on the first
-    # numeric parameter axis
+    # trend plot: 1D numeric sweeps, or paired point lists (zip / CSV
+    # import) keyed on the first all-numeric parameter axis
     axis = None
-    if len(names) == 1 or zip_params:
+    if len(names) == 1 or paired:
         for n in names:
             if all(isinstance(v, (int, float)) for v in params[n]):
                 axis = n

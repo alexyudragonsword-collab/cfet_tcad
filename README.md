@@ -79,6 +79,46 @@ cfet-tcad sweep configs/cfet_2d_sige.yaml --zip -j 4 \
 
 Python API 等价用法见 `examples/run_idvg.py`、`examples/run_idvd.py`。
 
+## 设计导入与导出
+
+**外部网格导入**（`structure: external`）：直接仿真用户自备的 gmsh
+MSH 2.2 ASCII 网格（其他版本用 `gmsh in.msh -save_all -format msh2 -o
+out.msh` 转换），配置里给出物理组到 region/contact/interface 的映射与
+掺杂方式（`lateral_sd` 解析剖面 / `uniform` 均匀 / `expression` 任意
+DEVSIM 表达式），坐标单位为 cm：
+
+```yaml
+device:
+  structure: external
+  external:
+    mesh_file: my_device.msh        # 相对配置文件所在目录
+    dimension: 2
+    regions: {bulk: Silicon, gox: Oxide}
+    contacts: {source: bulk, drain: bulk, gate: gox}
+    interfaces: {si_ox: [bulk, gox]}
+    doping:
+      bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
+```
+
+**CSV 设计点导入**：DOE 表格（Excel 导出即可）直接驱动 sweep,列名为
+点分配置路径,每行一次仿真;导出的 `sweep_summary.csv` 改一改可直接
+回灌（状态/FOM 列自动忽略）。GUI 的 Sweep 对话框有同款 "Import CSV"：
+
+```bash
+cfet-tcad sweep configs/nsheet_nfet_2d.yaml --points doe.csv -j 4
+```
+
+**几何导出**：`structure` 命令可把器件几何导出为 STL/PLY/VTP（表面网
+格,任何环境可用）或带材质颜色的 OBJ+MTL（需要 GL,同 `--png`）;GUI 的
+Structure 3D 标签页有对应 "Export..." 按钮：
+
+```bash
+cfet-tcad structure configs/cfet_3d.yaml --stl device.stl --obj device.obj
+```
+
+仿真结果本身始终同时落盘 CSV（I-V）、`fom.json`（参数提取）、VTK
+（VisIt/ParaView）与 gmsh `.msh`。
+
 ## 图形界面（对标 Sentaurus Workbench）
 
 ```bash

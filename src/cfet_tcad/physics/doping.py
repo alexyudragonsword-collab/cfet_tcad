@@ -44,9 +44,36 @@ def create_doping(device: str, region: str, params: DeviceParams,
         donors = f"{ch}"
         acceptors = f"{sd} * {profile}"
 
+    _register_doping(device, region, donors, acceptors)
+
+
+def _register_doping(device: str, region: str,
+                     donors: str, acceptors: str) -> None:
     CreateNodeModel(device, region, "Donors", donors)
     CreateNodeModel(device, region, "Acceptors", acceptors)
     CreateNodeModel(device, region, "NetDoping", "Donors - Acceptors")
     CreateNodeModel(device, region, "TotalDoping", "Donors + Acceptors")
     devsim.edge_from_node_model(device=device, region=region,
                                 node_model="NetDoping")
+
+
+def create_doping_from_spec(device: str, region: str, params: DeviceParams,
+                            polarity: str | None = None,
+                            spec: dict | None = None) -> None:
+    """Doping dispatch for external meshes (MeshLayout.doping_specs).
+
+    ``spec`` is None or ``{"profile": "lateral_sd"}`` for the analytic
+    S/D profile above; ``uniform`` takes flat donors_cm3/acceptors_cm3;
+    ``expression`` takes raw DEVSIM expressions in x/y/z.
+    """
+    profile = (spec or {}).get("profile", "lateral_sd")
+    if profile == "lateral_sd":
+        create_doping(device, region, params, polarity=polarity)
+    elif profile == "uniform":
+        _register_doping(device, region,
+                         f"{float(spec.get('donors_cm3', 0.0))}",
+                         f"{float(spec.get('acceptors_cm3', 0.0))}")
+    elif profile == "expression":
+        _register_doping(device, region, spec["donors"], spec["acceptors"])
+    else:  # DeviceParams validation should have caught this
+        raise ValueError(f"unknown doping profile {profile!r}")

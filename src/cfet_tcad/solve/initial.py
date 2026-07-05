@@ -5,7 +5,7 @@ import devsim
 from ..geometry.base import MeshLayout
 from ..geometry.params import DeviceParams
 from ..physics import equations as eq
-from ..physics.doping import create_doping
+from ..physics.doping import create_doping_from_spec
 from ..physics.lombardi import apply_lombardi_currents, rewire_lombardi_contact
 from ..physics.materials import MATERIALS, get_material
 from ..physics.mobility import create_mobility
@@ -74,7 +74,9 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     for region in silicon_regions:
         eq.set_silicon_parameters(device, region, material_of(region),
                                   temperature, taun=taun, taup=taup)
-        create_doping(device, region, params, polarity=polarity_of(region))
+        create_doping_from_spec(device, region, params,
+                                polarity=polarity_of(region),
+                                spec=layout.doping_specs.get(region))
         eq.create_silicon_potential_only(device, region)
     for region in oxide_regions:
         eq.set_oxide_parameters(device, region, oxide)

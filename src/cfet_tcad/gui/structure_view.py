@@ -11,8 +11,11 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -61,6 +64,11 @@ class StructureView(QWidget):
         bar.addWidget(QLabel("field"))
         bar.addWidget(self.field_box)
         bar.addWidget(self.clip_box)
+        self.export_btn = QPushButton("Export...")
+        self.export_btn.setToolTip(
+            "export the device geometry (STL/PLY/VTP; OBJ keeps colors)")
+        self.export_btn.clicked.connect(self.export_geometry)
+        bar.addWidget(self.export_btn)
         layout.addLayout(bar)
 
         self.plotter = QtInteractor(self)
@@ -99,6 +107,30 @@ class StructureView(QWidget):
         for box in (self.snap_box, self.field_box):
             box.blockSignals(False)
         self._redraw()
+
+    def export_geometry(self) -> None:
+        """Design export of the displayed snapshot (surface mesh formats
+        need no GL; OBJ renders the colored scene off-screen)."""
+        if self._dir is None:
+            QMessageBox.information(self, "Export",
+                                    "load a structure first")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export geometry", "device.stl",
+            "STL (*.stl);;PLY (*.ply);;VTK PolyData (*.vtp);;"
+            "OBJ with colors (*.obj)")
+        if not path:
+            return
+        prefix = self.snap_box.currentText() or None
+        try:
+            if Path(path).suffix.lower() == ".obj":
+                render3d.export_obj(self._dir, path, prefix=prefix)
+            else:
+                render3d.export_surface(self._dir, path, prefix=prefix)
+        except Exception as exc:  # noqa: BLE001 - surface to the user
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        self.title.setText(f"exported: {path}")
 
     def _redraw(self) -> None:
         if self.plotter is None or self._dir is None:

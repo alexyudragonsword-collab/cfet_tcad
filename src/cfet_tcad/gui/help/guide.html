@@ -106,6 +106,12 @@ device.channel_material_p=Silicon,SiGe15,SiGe30,SiGe45
 device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
 </pre>
 
+<p><b>Import CSV&hellip;</b> fills the dialog from a design-point table
+(rows = runs, dotted config paths as headers) &mdash; an edited
+<code>sweep_summary.csv</code> from a previous sweep works as-is, its
+status/FOM columns are ignored. The CLI equivalent is
+<code>cfet-tcad sweep base.yaml --points doe.csv</code>.</p>
+
 <hr>
 <h2>4. Device structures</h2>
 
@@ -125,6 +131,34 @@ metal). Doping: <code>sd_doping_cm3</code>,
 junction tail). V<sub>t</sub> is set by the gate metal:
 <code>gate_workfunction_ev</code> (single device) or
 <code>gate_workfunction_n_ev</code>/<code>_p_ev</code> (CFET).</p>
+
+<p><b>Design import &mdash; external meshes.</b> Set
+<code>structure: external</code> to simulate a user-supplied gmsh
+MSH 2.2 ASCII mesh (units: cm). The <code>device.external</code> section
+maps the file's physical groups onto regions / contacts / interfaces and
+picks a doping recipe per silicon region (<code>lateral_sd</code>
+analytic profile, <code>uniform</code>, or a raw DEVSIM
+<code>expression</code> in x/y/z):</p>
+
+<pre>
+device:
+  structure: external
+  external:
+    mesh_file: my_device.msh      # relative to the config file
+    dimension: 2
+    regions:    {bulk: Silicon, gox: Oxide}
+    contacts:   {source: bulk, drain: bulk, gate: gox}
+    interfaces: {si_ox: [bulk, gox]}
+    doping:
+      bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
+</pre>
+
+<p><b>Design export.</b> The Structure 3D tab's <b>Export&hellip;</b>
+button (or <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj
+dev.obj</code>) writes the device geometry as STL/PLY/VTP surface meshes
+or a material-colored OBJ+MTL for CAD and presentation tools. Simulation
+results always land as CSV, fom.json, VTK (VisIt/ParaView), and the gmsh
+.msh alongside.</p>
 
 <hr>
 <h2>5. Physics models</h2>

@@ -49,6 +49,29 @@ def test_field_choices(structure_dir):
     assert "Potential" not in choices  # structure-only export, no solve
 
 
+@pytest.mark.parametrize("ext", [".stl", ".ply", ".vtp"])
+def test_export_surface(structure_dir, tmp_path, ext):
+    """Design export: boundary surface files load back with real cells
+    (pure mesh processing, no GL involved)."""
+    from cfet_tcad.io.render3d import export_surface
+
+    path = export_surface(structure_dir, tmp_path / f"dev{ext}")
+    assert path.exists() and path.stat().st_size > 0
+    back = pv.read(path)
+    assert back.n_cells > 0
+    if ext == ".stl":  # STL is triangles-only
+        assert back.is_all_triangles
+
+
+def test_export_obj_with_materials(structure_dir, tmp_path):
+    """Colored OBJ export (off-screen render, same GL needs as PNGs)."""
+    from cfet_tcad.io.render3d import export_obj
+
+    path = export_obj(structure_dir, tmp_path / "dev.obj")
+    assert path.exists() and path.stat().st_size > 0
+    assert (tmp_path / "dev.mtl").exists()  # material colors ride along
+
+
 @pytest.mark.parametrize("field,clip", [(None, None), ("NetDoping", "z")])
 def test_offscreen_render_nonblank(structure_dir, tmp_path, field, clip):
     from cfet_tcad.io.render3d import render_structure

@@ -129,9 +129,22 @@ def apply_overrides(raw: dict, overrides: dict) -> dict:
     return out
 
 
+def resolve_external_mesh(raw: dict, base_dir: Path) -> dict:
+    """Make a relative device.external.mesh_file absolute against
+    ``base_dir`` (the directory the config file lives in), so configs can
+    be copied or run from any working directory."""
+    ext = (raw.get("device") or {}).get("external")
+    if isinstance(ext, dict) and ext.get("mesh_file"):
+        mesh = Path(ext["mesh_file"])
+        if not mesh.is_absolute():
+            ext["mesh_file"] = str((Path(base_dir) / mesh).resolve())
+    return raw
+
+
 def load_config(path: Path, overrides: dict | None = None) -> RunConfig:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     if overrides:
         raw = apply_overrides(raw, overrides)
+    resolve_external_mesh(raw, Path(path).parent)
     return build_config(raw)

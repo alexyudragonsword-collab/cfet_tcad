@@ -140,6 +140,20 @@ def test_about_dialog_and_version(qapp):
     assert re.search(r'^version = "0\.5"$', text, re.M)
 
 
+def test_sweep_dialog_imports_points_csv(qapp, tmp_path):
+    from cfet_tcad.gui.main_window import SweepDialog
+
+    doe = tmp_path / "doe.csv"
+    doe.write_text("device.l_gate_nm,fom.ss\n12,74\n15,71\n",
+                   encoding="utf-8")
+    dlg = SweepDialog()
+    dlg.load_points_csv(doe)
+    # rows become paired tuples: spec lines + zip mode (fom column drops)
+    assert dlg.specs.toPlainText() == "device.l_gate_nm=12,15"
+    assert dlg.zip_box.isChecked()
+    dlg.close()
+
+
 def test_app_icon_ships(qapp):
     from pathlib import Path
 
