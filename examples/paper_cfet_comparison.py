@@ -116,7 +116,8 @@ def main(argv=None) -> int:
     ax_bar.set_ylabel("Ion @ Ioff=1nA [uA]")
     ax_bar.set_title("Ion at matched Ioff (dark n / light p)", fontsize=10)
     ax_bar.grid(True, axis="y", alpha=0.25)
-    ax_bar.set_ylim(0, None)
+    ax_bar.set_ylim(0, max(ion[c][p] for c in CONFIGS
+                          for p in ("n", "p")) * 1e6 * 1.22)
     fig.tight_layout()
     png = args.out / "paper_comparison.png"
     fig.savefig(png, dpi=160)
