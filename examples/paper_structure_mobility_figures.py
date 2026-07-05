@@ -23,6 +23,37 @@ LABELS = {"paper_fbc_lombardi": "FBC (fin, 5x18 nm)",
          "paper_sbc_lombardi": "SBC (sheet, 18x5 nm)"}
 COLORS = {"paper_fbc_lombardi": "#2a78d6", "paper_sbc_lombardi": "#1baf7a"}
 
+#: inset the line-sample endpoints away from the exact oxide interface -
+#: sample_over_line probing precisely on the mesh boundary can miss every
+#: cell and silently return 0, which would masquerade as real data
+_INSET = 0.03
+
+
+def _region(meshes, sign: str):
+    """The silicon region matching a doping sign ('n' -> donor-dominated,
+    'p' -> acceptor-dominated) - never assume file/creation order."""
+    for m in meshes:
+        if "NetDoping" not in m.array_names:
+            continue
+        total = float(np.asarray(m["NetDoping"]).sum())
+        if (sign == "n") == (total > 0):
+            return m
+    raise ValueError(f"no {sign}-type silicon region in this snapshot")
+
+
+def _full_bounds(meshes):
+    b = np.array([m.bounds for m in meshes])
+    return (b[:, 0].min(), b[:, 1].max(), b[:, 2].min(), b[:, 3].max(),
+           b[:, 4].min(), b[:, 5].max())
+
+
+def _iso_camera(bounds):
+    c = [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2,
+        (bounds[4] + bounds[5]) / 2]
+    diag = float(np.linalg.norm(np.array(bounds[1::2]) - np.array(bounds[0::2])))
+    return [[c[0] + 1.3 * diag, c[1] + 1.1 * diag, c[2] + 1.4 * diag],
+           c, (0, 1, 0)], c
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
@@ -39,14 +70,15 @@ def main(argv=None) -> int:
     from cfet_tcad.io.render3d import (add_device, load_snapshot,
                                        sample_line, snapshot_prefixes)
 
-    meshes, bounds = {}, {}
+    meshes, device_bounds, nfet, pfet = {}, {}, {}, {}
     for cfg in CONFIGS:
         vtk_dir = args.results_root / cfg / "vtk"
         prefix = snapshot_prefixes(vtk_dir)[-1]  # the high-Vg snapshot
         m = load_snapshot(vtk_dir, prefix)
         meshes[cfg] = m
-        silicon = next(x for x in m if "NetDoping" in x.array_names)
-        bounds[cfg] = silicon.bounds  # (xmin,xmax,ymin,ymax,zmin,zmax)
+        device_bounds[cfg] = _full_bounds(m)
+        nfet[cfg] = _region(m, "n")
+        pfet[cfg] = _region(m, "p")
 
     # --- Fig. 4 style: structure cross-sections, FBC vs SBC -------------
     fig4 = args.out / "paper_fig4_structure.png"
@@ -56,14 +88,7 @@ def main(argv=None) -> int:
         add_device(p, meshes[cfg], field=None, clip="z")
         p.add_text(LABELS[cfg], font_size=12)
         p.add_axes()
-        c = [(bounds[cfg][0] + bounds[cfg][1]) / 2,
-             (bounds[cfg][2] + bounds[cfg][3]) / 2,
-             (bounds[cfg][4] + bounds[cfg][5]) / 2]
-        diag = float(np.linalg.norm(
-            np.array(bounds[cfg][1::2]) - np.array(bounds[cfg][0::2])))
-        p.camera_position = [
-            [c[0] + 1.3 * diag, c[1] + 1.1 * diag, c[2] + 1.3 * diag],
-            c, (0, 1, 0)]
+        p.camera_position, _ = _iso_camera(device_bounds[cfg])
     p.set_background("white")
     p.screenshot(str(fig4))
     p.close()
@@ -71,30 +96,18 @@ def main(argv=None) -> int:
 
     # --- Fig. 8 style: 3D eMobility (mu_n_cvt) distribution --------------
     fig8 = args.out / "paper_fig8_emobility_3d.png"
-    all_vals = np.concatenate([
-        np.asarray(next(x for x in meshes[c] if "mu_n_cvt" in x.array_names)
-                  ["mu_n_cvt"]) for c in CONFIGS])
-    clim = (float(all_vals.min()), float(all_vals.max()))
+    clim = (min(float(np.asarray(nfet[c]["mu_n_cvt"]).min()) for c in CONFIGS),
+           max(float(np.asarray(nfet[c]["mu_n_cvt"]).max()) for c in CONFIGS))
     p = pv.Plotter(off_screen=True, shape=(1, 2), window_size=(1600, 750))
     for i, cfg in enumerate(CONFIGS):
         p.subplot(0, i)
-        silicon = next(x for x in meshes[cfg] if "mu_n_cvt" in x.array_names)
-        clipped = silicon.clip(normal="z", origin=[
-            (bounds[cfg][0] + bounds[cfg][1]) / 2,
-            (bounds[cfg][2] + bounds[cfg][3]) / 2,
-            (bounds[cfg][4] + bounds[cfg][5]) / 2])
+        cam, center = _iso_camera(device_bounds[cfg])
+        clipped = nfet[cfg].clip(normal="z", origin=center)
         p.add_mesh(clipped, scalars="mu_n_cvt", cmap="viridis", clim=clim,
                   scalar_bar_args={"title": "eMobility [cm2/Vs]"})
         p.add_text(f"{LABELS[cfg]} - nMOS eMobility", font_size=11)
         p.add_axes()
-        c = [(bounds[cfg][0] + bounds[cfg][1]) / 2,
-             (bounds[cfg][2] + bounds[cfg][3]) / 2,
-             (bounds[cfg][4] + bounds[cfg][5]) / 2]
-        diag = float(np.linalg.norm(
-            np.array(bounds[cfg][1::2]) - np.array(bounds[cfg][0::2])))
-        p.camera_position = [
-            [c[0] + 1.3 * diag, c[1] + 1.1 * diag, c[2] + 1.3 * diag],
-            c, (0, 1, 0)]
+        p.camera_position = cam
     p.set_background("white")
     p.screenshot(str(fig8))
     p.close()
@@ -103,21 +116,24 @@ def main(argv=None) -> int:
     # --- Fig. 9 style: mobility profile across the confinement direction
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.4))
     fig.patch.set_facecolor("#fcfcfb")
-    for ax, field, title in ((axes[0], "mu_n_cvt", "nMOS (electron) eMobility"),
-                             (axes[1], "mu_p_cvt", "pMOS (hole) eMobility")):
+    plots = ((axes[0], "mu_n_cvt", nfet, "nMOS (electron) eMobility"),
+             (axes[1], "mu_p_cvt", pfet, "pMOS (hole) eMobility"))
+    for ax, field, region_of, title in plots:
         for cfg in CONFIGS:
-            b = bounds[cfg]
+            b = region_of[cfg].bounds
             x_mid = (b[0] + b[1]) / 2
             z_mid = (b[4] + b[5]) / 2
-            p1 = (x_mid, b[2], z_mid)
-            p2 = (x_mid, b[3], z_mid)
-            dist, vals = sample_line(meshes[cfg], field, p1, p2,
+            span = b[3] - b[2]
+            y0, y1 = b[2] + _INSET * span, b[3] - _INSET * span
+            dist, vals = sample_line(meshes[cfg], field,
+                                     (x_mid, y0, z_mid), (x_mid, y1, z_mid),
                                      resolution=150)
-            t_si_nm = (b[3] - b[2]) * 1e7  # cm -> nm
+            t_si_nm = span * 1e7  # cm -> nm
             ax.plot(dist * 1e7, vals, color=COLORS[cfg], lw=2,
                    label=f"{LABELS[cfg]} (t_si={t_si_nm:.0f}nm)")
         ax.set_xlabel("position across confinement direction [nm]")
         ax.set_ylabel("mobility [cm2/Vs]")
+        ax.set_ylim(0, None)
         ax.set_title(title, fontsize=10)
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=8)
