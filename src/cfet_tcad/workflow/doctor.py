@@ -89,7 +89,10 @@ def run_doctor() -> int:
         import tempfile
         dev = DeviceParams(name="doctor", structure="nanosheet_2d")
         mesh = MeshParams(nx_sd=4, nx_gate=6, ny_si=3, ny_ox=2)
-        with tempfile.TemporaryDirectory() as tmp:
+        # DEVSIM keeps the .msh handle open on Windows, where open files
+        # cannot be deleted - leave the cleanup failure to the OS temp
+        # janitor instead of failing the diagnosis after a good solve
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             msh = Path(tmp) / "doctor.msh"
             layout = BUILDERS["nanosheet_2d"](dev, mesh).build(msh)
             load_mesh(msh, layout, "doctor")
