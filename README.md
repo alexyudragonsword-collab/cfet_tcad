@@ -32,7 +32,7 @@ pip install -e '.[dev]'   # 附加 pytest
 ## 快速开始
 
 ```bash
-# nFET 纳米片 (CFET 上层管): Id-Vg 双 Vd 扫描 + 参数提取 + VTK
+# nFET 纳米片 (CFET 上层管): 2D Id-Vg 双 Vd 扫描 + 参数提取 + VTK
 cfet-tcad run configs/nsheet_nfet_2d.yaml
 
 # pFET 纳米片 (CFET 下层管)
@@ -40,6 +40,9 @@ cfet-tcad run configs/nsheet_pfet_2d.yaml
 
 # 输出特性 Id-Vd
 cfet-tcad run configs/nsheet_nfet_idvd_2d.yaml
+
+# 完整 3D 环栅 (GAA) 单纳米片 Id-Vg (约数分钟)
+cfet-tcad run configs/gaa_nfet_3d.yaml
 
 # 只生成网格
 cfet-tcad mesh configs/nsheet_nfet_2d.yaml
@@ -59,12 +62,19 @@ Python API 等价用法见 `examples/run_idvg.py`、`examples/run_idvd.py`。
 参考结果（Lg=15nm、t_si=5nm、EOT=1nm、Vdd=0.7V 双栅纳米片，本仓库默认配置）：
 SS ≈ 74 mV/dec，DIBL ≈ 90 mV/V，Ion/Ioff ≈ 1–2×10⁵，nFET/pFET 高度对称。
 
-## 器件与物理模型（Phase 1）
+## 器件与物理模型
 
-**几何**：2D 沟道纵截面双栅结构 —— GAA 纳米片的标准 2D 近似。单硅区
-（源/漏延伸区用解析高斯尾掺杂剖面）+ 上下栅氧 + 上下金属栅（功函数可配）。
-gmsh transfinite 结构化三角网格，硅体内向界面加密；输出 MSH 2.2 ASCII
-（DEVSIM 唯一支持的 gmsh 格式）。
+**几何**（`device.structure` 选择）：
+
+- `nanosheet_2d`（Phase 1）：2D 沟道纵截面双栅结构 —— GAA 纳米片的标准
+  2D 近似。单硅区（源/漏延伸区用解析高斯尾掺杂剖面）+ 上下栅氧 +
+  上下金属栅。gmsh transfinite 结构化三角网格，硅体内向界面加密。
+- `gaa_3d`（Phase 2）：完整 3D 环栅单纳米片。硅条 t_si × W 截面，栅段
+  四面包裹 t_ox 氧化层壳（3×3×3 结构化块网格、transfinite 四面体），
+  外壳表面为单一 `gate` 接触。物理组命名契约与 2D 一致，物理/求解/提取
+  模块零改动复用；2D 电流按有效宽度换算，3D 电流为真实安培。
+
+两者均输出 MSH 2.2 ASCII（DEVSIM 唯一支持的 gmsh 格式）。
 
 **输运**：Poisson + 电子/空穴连续性（Scharfetter-Gummel 离散化）、
 SRH 复合、迁移率三档可选（`const` / `doping` / `doping_vsat`）：
@@ -95,10 +105,10 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
 
 ## 路线图
 
-- **Phase 1（当前）**：2D 双栅纳米片截面全流程 ✔
-- **Phase 2**：3D 单纳米片 GAA（`GeometryBuilder` 新子类，物理组命名契约
-  不变）；density-gradient 量子修正（在 `physics/equations.py` 载流子模型
-  上挂广义电位）；Lombardi 垂直场迁移率退化（需 element 级场重构）
+- **Phase 1**：2D 双栅纳米片截面全流程 ✔
+- **Phase 2**：3D 单纳米片 GAA ✔；待做：density-gradient 量子修正
+  （在 `physics/equations.py` 载流子模型上挂广义电位）、Lombardi
+  垂直场迁移率退化（需 element 级场重构）
 - **Phase 3**：完整 CFET 堆叠（nFET-on-pFET，共栅，双器件同时求解）、
   寄生分析、参数扫描并行化
 

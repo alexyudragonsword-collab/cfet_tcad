@@ -20,6 +20,7 @@ class DeviceParams:
 
     name: str = "nanosheet"
     polarity: str = "n"  # "n" (CFET top device) or "p" (CFET bottom device)
+    structure: str = "nanosheet_2d"  # "nanosheet_2d" | "gaa_3d"
 
     # geometry [nm]
     l_gate_nm: float = 15.0
@@ -42,6 +43,10 @@ class DeviceParams:
     def __post_init__(self):
         if self.polarity not in ("n", "p"):
             raise ValueError(f"polarity must be 'n' or 'p', got {self.polarity!r}")
+        if self.structure not in ("nanosheet_2d", "gaa_3d"):
+            raise ValueError(
+                f"structure must be 'nanosheet_2d' or 'gaa_3d', "
+                f"got {self.structure!r}")
         for attr in ("l_gate_nm", "t_si_nm", "t_ox_nm", "l_sd_nm",
                      "junction_lambda_nm", "sd_doping_cm3", "channel_doping_cm3",
                      "sheet_width_nm"):
@@ -87,10 +92,11 @@ class MeshParams:
     nx_gate: int = 40   # x divisions under the gate
     ny_si: int = 12     # y divisions across the silicon body
     ny_ox: int = 4      # y divisions across each oxide layer
+    nz_w: int = 8       # z divisions across the sheet width (3D only)
     si_bump: float = 0.65  # <1 concentrates silicon y-nodes at the interfaces
 
     def __post_init__(self):
-        for attr in ("nx_sd", "nx_gate", "ny_si", "ny_ox"):
+        for attr in ("nx_sd", "nx_gate", "ny_si", "ny_ox", "nz_w"):
             if getattr(self, attr) < 2:
                 raise ValueError(f"{attr} must be >= 2")
 
@@ -100,15 +106,18 @@ class MeshParams:
 REGION_SILICON = "silicon"
 REGION_OXIDE_TOP = "oxide_top"
 REGION_OXIDE_BOTTOM = "oxide_bottom"
+REGION_OXIDE = "oxide"            # 3D GAA: single wrap-around shell
 CONTACT_SOURCE = "source"
 CONTACT_DRAIN = "drain"
 CONTACT_GATE_TOP = "gate_top"
 CONTACT_GATE_BOTTOM = "gate_bottom"
+CONTACT_GATE = "gate"             # 3D GAA: single all-around gate
 INTERFACE_SI_OX_TOP = "si_ox_top"
 INTERFACE_SI_OX_BOTTOM = "si_ox_bottom"
+INTERFACE_SI_OX = "si_ox"         # 3D GAA
 
 SILICON_REGIONS = (REGION_SILICON,)
-OXIDE_REGIONS = (REGION_OXIDE_TOP, REGION_OXIDE_BOTTOM)
-GATE_CONTACTS = (CONTACT_GATE_TOP, CONTACT_GATE_BOTTOM)
+OXIDE_REGIONS = (REGION_OXIDE_TOP, REGION_OXIDE_BOTTOM, REGION_OXIDE)
+GATE_CONTACTS = (CONTACT_GATE_TOP, CONTACT_GATE_BOTTOM, CONTACT_GATE)
 OHMIC_CONTACTS = (CONTACT_SOURCE, CONTACT_DRAIN)
-INTERFACES = (INTERFACE_SI_OX_TOP, INTERFACE_SI_OX_BOTTOM)
+INTERFACES = (INTERFACE_SI_OX_TOP, INTERFACE_SI_OX_BOTTOM, INTERFACE_SI_OX)
