@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    # building takes ~20 min, so branch pushes only trigger when the
+    # packaging inputs themselves change
+    branches: ["**"]
+    paths:
+      - ".github/workflows/windows-exe.yml"
+      - "packaging/**"
 
 jobs:
   build:
