@@ -1,8 +1,9 @@
 """Main window: Sentaurus Workbench-style layout.
 
 Left: config browser.  Center tabs: Experiments (node table), Parameters
-(config form), Results (curves + FOMs).  Bottom: log console.  Toolbar
-drives runs and sweeps through the RunQueue.
+(config form), Results (curves + FOMs), Structure 3D.  Bottom: log
+console.  Toolbar drives runs and sweeps through the RunQueue; the Help
+menu (top-left) opens the user guide window and the About dialog.
 """
 
 import time
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QListWidget,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QSpinBox,
@@ -85,13 +87,16 @@ class MainWindow(QMainWindow):
         self.log = LogConsole()
 
         self.structure = StructureView()
+        # the user guide lives in its own window, reached from the Help
+        # menu (top-left) — not duplicated as a center tab
         self.help = HelpView()
+        self.help.setWindowTitle("User Guide / 用户指南")
+        self.help.resize(920, 720)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.table, "Experiments")
         self.tabs.addTab(self.form, "Parameters")
         self.tabs.addTab(self.results, "Results")
         self.tabs.addTab(self.structure, "Structure 3D")
-        self.tabs.addTab(self.help, "Help")
 
         hsplit = QSplitter(Qt.Horizontal)
         hsplit.addWidget(self.config_list)
@@ -116,11 +121,14 @@ class MainWindow(QMainWindow):
         bar.addAction("Structure", self.preview_structure)
         bar.addAction("Open config folder...", self.pick_folder)
 
-        # menu bar
-        help_menu = self.menuBar().addMenu("&Help")
-        help_menu.addAction(
-            "User Guide", lambda: self.tabs.setCurrentWidget(self.help))
-        help_menu.addAction("About cfet_tcad", self.show_about)
+        # menu bar: single Help entry point at the top-left.  Construct
+        # the QMenu with an explicit parent instead of addMenu(str):
+        # shiboken deletes the C++ menu of the string overload once the
+        # temporary wrapper from menuBar().actions() is garbage collected
+        self.help_menu = QMenu("&Help", self)
+        self.help_menu.addAction("User Guide / 用户指南", self.show_help)
+        self.help_menu.addAction("About cfet_tcad", self.show_about)
+        self.menuBar().addMenu(self.help_menu)
 
         # wiring
         self.config_list.currentTextChanged.connect(self.load_config)
@@ -268,8 +276,17 @@ class MainWindow(QMainWindow):
         if (exp.out_dir / "vtk").is_dir():
             self.structure.load_dir(exp.out_dir / "vtk")
 
+    def show_help(self) -> None:
+        self.help.show()
+        self.help.raise_()
+        self.help.activateWindow()
+
     def show_about(self) -> None:
         AboutDialog(self).exec()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.help.close()  # the guide window follows the main window
+        super().closeEvent(event)
 
     def _refresh_status(self) -> None:
         counts: dict = {}

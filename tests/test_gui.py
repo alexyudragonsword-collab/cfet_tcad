@@ -96,9 +96,18 @@ def test_main_window_constructs(qapp, tmp_path):
 
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
     assert win.config_list.count() == 0
-    # Experiments/Parameters/Results/Structure/Help
-    assert win.tabs.count() == 5
+    # Experiments/Parameters/Results/Structure (the guide is a window,
+    # not a tab)
+    assert win.tabs.count() == 4
+    # single Help entry point: the top-left menu opens the guide window
+    menus = [a.text() for a in win.menuBar().actions()]
+    assert menus == ["&Help"]
+    actions = [a.text() for a in win.menuBar().actions()[0].menu().actions()]
+    assert actions == ["User Guide / 用户指南", "About cfet_tcad"]
+    win.show_help()
+    assert win.help.isVisible() and win.help.isWindow()
     win.close()
+    assert not win.help.isVisible()  # follows the main window
 
 
 def test_structure_view_respects_no3d_gate(qapp, monkeypatch):
