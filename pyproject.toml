@@ -20,9 +20,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+gui = ["PySide6-Essentials"]
 
 [project.scripts]
 cfet-tcad = "cfet_tcad.workflow.cli:main"
+cfet-tcad-gui = "cfet_tcad.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

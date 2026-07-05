@@ -77,6 +77,30 @@ cfet-tcad sweep configs/cfet_2d_sige.yaml --zip -j 4 \
 
 Python API 等价用法见 `examples/run_idvg.py`、`examples/run_idvd.py`。
 
+## 图形界面（对标 Sentaurus Workbench）
+
+```bash
+pip install -e '.[gui]'    # 安装 PySide6-Essentials
+cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./results）
+```
+
+布局与交互范式对标 SWB：
+
+- **Experiments 页**（SWB 实验表格）：每行一个实验点，状态色块随运行
+  流转（灰=排队 / 黄=运行中 / 绿=完成 / 红=失败），完成后 Vt/SS/Ion/
+  Ioff/DIBL 列自动回填；双击行打开其结果。
+- **Parameters 页**（工具参数面板）：从配置 dataclass 自动生成的分组
+  表单，下拉框覆盖结构/迁移率/量子模型/材料等枚举项，保存前经完整
+  配置校验。
+- **Results 页**（Sentaurus Visual/Inspect）：matplotlib 交互画布重绘
+  CSV 曲线（log/linear 切换、缩放/平移工具栏）+ 展平的 FOM 表。
+- **Sweep… 对话框**：多行 `path=v1,v2,...` 参数网格（可选 zip 成组），
+  在表格中展开为逐点任务，限并发并行执行。
+- 每个实验在独立 OS 进程中运行（QProcess 驱动 CLI，与 DEVSIM 全局
+  状态要求一致）；日志面板默认过滤求解器迭代噪声（可开 verbose）。
+
+无显示器环境（CI/容器）可用 `QT_QPA_PLATFORM=offscreen` 运行与测试。
+
 每次运行在 `output.directory` 下产生：
 
 - `idvg.csv` / `idvd.csv` — 全部偏压点的端电流
