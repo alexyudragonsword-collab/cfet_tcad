@@ -19,7 +19,9 @@ done, in addition to executing it:
      new archive file.
    - Refresh the stats in "当前状态一览" (line/test/config counts,
      commit count) if they've drifted meaningfully.
-3. Commit both files (the archive + the updated project plan) together
+3. Also append the plan to `docs/DEV_PLANS_ARCHIVE.md` (the
+   chronological full-text archive of every plan-mode plan).
+4. Commit the files (the archive + the updated project plan) together
    with the feature work, or as an immediate follow-up commit if the
    plan file only exists after implementation finishes.
 

@@ -9,19 +9,38 @@
 
 ## 0. Plan-mode 计划归档索引
 
-每次 `/plan` 模式生成并经批准执行的详细代码计划，完成后都归档到
-`docs/dev_plan_<slug>.md`（计划原文 + Context/改动/验证，末尾补一段
-"结果"）。当前归档：
+每次 `/plan` 模式生成并经批准执行的详细代码计划，完成后都归档
+（计划原文 + Context/改动/验证，末尾补一段"结果"）。
 
-| 文件 | 主题 | 对应提交 |
+**全量归档：`docs/DEV_PLANS_ARCHIVE.md`** —— 本项目全部 **13 份**
+plan-mode 计划的完整原文（从会话 transcript 逐字恢复，含上下文压缩前
+的早期计划），按时间排序，每份附执行结果与对应提交：
+
+| # | 计划 | 对应提交 |
 |---|---|---|
-| `dev_plan_paper_cfet_comparison.md` | 论文复现：FBC/SBC CFET 器件级对比（Ion/Ioff、迁移率标定旋钮） | `0e41666`→`0aa300e` |
-| `dev_plan_windows_exe_configs_bundling.md` | configs/ 示例设计打进两条 Windows exe 包 | `cee0109` |
-| `dev_plan_windows_exe_doctor_tempfile_fix.md` | doctor 命令 Windows 临时目录清理失败修复 | `60b1816` |
+| 1 | CFET TCAD 仿真系统 — 实施计划（Phase 1-3 蓝图） | `e50b8ee` 起 |
+| 2 | Density-Gradient 量子修正 | `0dd234c` |
+| 3 | CFET 反相器 VTC（电路节点耦合） | `3878ff5` |
+| 4 | Lombardi 垂直场迁移率退化（element 级） | `51f043a`/`0813011` |
+| 5 | element 级量子电流（CVT×DG 全物理） | `5a8f6ae` |
+| 6 | SiGe(x) 组分插值 + 成组参数 DOE | `32b46b5` |
+| 7 | PySide6 桌面 UI | `5297edb` |
+| 8 | 3D 器件结构渲染 | `05a4938` |
+| 9 | GitHub Actions 构建 Windows 11 独立 exe | `2b57285`→`163dfdc` |
+| 10 | 设计导入/导出（外部网格 + CSV + STL/OBJ） | `e26dec9` |
+| 11 | configs/ 示例设计打进 Windows exe 包 | `cee0109` |
+| 12 | doctor Windows 临时目录清理修复 | `60b1816` |
+| 13 | 论文复现：FBC/SBC CFET 对比 | `0e41666`→`0aa300e` |
 
-（`e26dec9` 设计导入导出、Fig8/9 迁移率可视化等改动是直接执行或纯技术
-问答后的直接实现，未经过 `/plan` 模式，因此不在此索引——本索引只收
-plan-mode 产出的计划文件。）
+其中 11-13 另有独立文件（`dev_plan_windows_exe_configs_bundling.md`、
+`dev_plan_windows_exe_doctor_tempfile_fix.md`、
+`dev_plan_paper_cfet_comparison.md`，为本约定建立后的逐份归档）。
+今后新计划继续逐份归档为 `dev_plan_<slug>.md` 并同步加入
+DEV_PLANS_ARCHIVE.md 与本索引。
+
+（GUI 截图/图标/改名/Help 合并、Windows 现场故障三连修、Fig4/8/9
+可视化等改动是直接执行的实现或修复，未经过 `/plan` 模式，故不在本
+索引，均记录于下方阶段回顾。）
 
 ## 1. 项目定位
 
