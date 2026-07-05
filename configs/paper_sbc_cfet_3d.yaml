@@ -1,0 +1,52 @@
+# Sheet-based CFET (SBC) at paper dimensions
+# Device parameters from: Jiang et al. (Applied Materials), "Complementary
+# FET Device and Circuit Level Evaluation Using Fin-Based and Sheet-Based
+# Configurations Targeting 3nm Node and Beyond" - Fig. 2 table:
+#   Gate Pitch 45nm -> l_sd = (45-15)/2 ; Gate Length 15nm ; N/P Space 30nm
+#   Nanosheet Width 18nm x Sheet Thickness 5nm
+#   Vdd 0.7V ; 2 sheets per device (n_sheets: 2, parallel multiplier)
+# Assumptions not given by the paper: EOT~1nm, S/D 1e20, channel 1e15,
+# gate workfunctions 4.50/4.72 eV (same for both configurations, as in
+# the paper). Mobility orientation calibration via mobility_scale_n/p:
+# (100)-dominated sheet channel is the mobility reference: 1.0 / 1.0
+device:
+  name: paper_sbc
+  structure: cfet_3d
+  l_gate_nm: 15.0
+  t_si_nm: 5.0
+  t_ox_nm: 1.0
+  l_sd_nm: 15.0
+  t_gap_nm: 30.0
+  junction_lambda_nm: 1.5
+  sd_doping_cm3: 1.0e20
+  channel_doping_cm3: 1.0e15
+  gate_workfunction_n_ev: 4.50
+  gate_workfunction_p_ev: 4.72
+  sheet_width_nm: 18.0
+  n_sheets: 2
+
+mesh:
+  nx_sd: 8
+  nx_gate: 12
+  ny_si: 5
+  ny_ox: 2
+  nz_w: 8
+
+physics:
+  mobility_model: doping_vsat
+  mobility_scale_n: 1.0
+  mobility_scale_p: 1.0
+
+simulation:
+  type: cfet_idvg
+  vdd: 0.7
+  vg_start: -0.2
+  vg_stop: 0.9
+  vg_step: 0.05
+
+output:
+  directory: results/paper_sbc
+  vtk: false
+
+extract:
+  icrit_a: 1.0e-8

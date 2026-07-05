@@ -27,6 +27,8 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
                       temperature: float = 300.0,
                       taun: float = 1e-7, taup: float = 1e-7,
                       mobility_model: str = "doping_vsat",
+                      mobility_scale_n: float = 1.0,
+                      mobility_scale_p: float = 1.0,
                       quantum_model: str = "none",
                       dg_gamma_n: float = 1.0, dg_gamma_p: float = 1.0,
                       circuit_contacts: dict | None = None,
@@ -104,7 +106,9 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     mobilities = {}
     for region in silicon_regions:
         mu_n, mu_p = create_mobility(device, region, material_of(region),
-                                     base_mobility)
+                                     base_mobility,
+                                     scale_n=mobility_scale_n,
+                                     scale_p=mobility_scale_p)
         mobilities[region] = (mu_n, mu_p)
         eq.create_silicon_dd(device, region, mu_n, mu_p)
     for contact in ohmic_contacts:

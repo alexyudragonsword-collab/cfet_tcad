@@ -73,6 +73,8 @@ class Runner:
             temperature=phys.temperature,
             taun=phys.taun, taup=phys.taup,
             mobility_model=phys.mobility_model,
+            mobility_scale_n=phys.mobility_scale_n,
+            mobility_scale_p=phys.mobility_scale_p,
             quantum_model=phys.quantum_model,
             dg_gamma_n=phys.dg_gamma_n, dg_gamma_p=phys.dg_gamma_p,
             circuit_contacts=circuit_contacts,

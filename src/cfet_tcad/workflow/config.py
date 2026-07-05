@@ -19,12 +19,18 @@ class PhysicsConfig:
     taun: float = 1e-7
     taup: float = 1e-7
     mobility_model: str = "doping_vsat"
+    # calibration multipliers on the low-field mobility (surface
+    # orientation / strain / BTE-matching knobs, cf. calibrated DD flows)
+    mobility_scale_n: float = 1.0
+    mobility_scale_p: float = 1.0
     oxide_material: str = "SiO2"
     quantum_model: str = "none"
     dg_gamma_n: float = 1.0   # scale factors on the DG coefficients
     dg_gamma_p: float = 1.0
 
     def __post_init__(self):
+        if self.mobility_scale_n <= 0 or self.mobility_scale_p <= 0:
+            raise ValueError("mobility_scale_n/p must be positive")
         if self.mobility_model not in MOBILITY_MODELS:
             raise ValueError(
                 f"mobility_model must be one of {MOBILITY_MODELS}")

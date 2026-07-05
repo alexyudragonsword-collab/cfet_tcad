@@ -85,3 +85,32 @@ def test_sige_pfet_boosts_drive(tmp_path, fresh_devsim):
     id_sige = _pfet_on_current(fresh_devsim, tmp_path / "sige", "SiGe30")
     # strained SiGe hole mobility must translate into more linear drive
     assert id_sige > 1.3 * id_si
+
+
+def test_mobility_scale_expressions():
+    """Calibration multipliers wrap the low-field mobility; 1.0 keeps the
+    expression character-identical (bit-exact legacy behavior)."""
+    from cfet_tcad.physics import mobility as mob
+
+    captured = {}
+
+    def fake_create(device, region, name, expr):
+        captured[name] = expr
+
+    orig_cnm, orig_edge = mob.CreateNodeModel, mob.devsim.edge_average_model
+    mob.CreateNodeModel = fake_create
+    mob.devsim.edge_average_model = lambda **kw: None
+    try:
+        from cfet_tcad.physics.materials import SILICON
+        mob._create_lowfield_edge_models("d", "r", SILICON)
+        base_n = captured["mu_n_lf_node"]
+        mob._create_lowfield_edge_models("d", "r", SILICON,
+                                         scale_n=0.75, scale_p=1.4)
+        assert captured["mu_n_lf_node"] == f"0.75 * ({base_n})"
+        assert captured["mu_p_lf_node"].startswith("1.4 * (")
+        mob._create_lowfield_edge_models("d", "r", SILICON,
+                                         scale_n=1.0, scale_p=1.0)
+        assert captured["mu_n_lf_node"] == base_n  # unchanged at 1.0
+    finally:
+        mob.CreateNodeModel = orig_cnm
+        mob.devsim.edge_average_model = orig_edge

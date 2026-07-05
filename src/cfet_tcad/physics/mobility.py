@@ -29,17 +29,28 @@ MOBILITY_MODELS = ("const", "doping", "doping_vsat", "lombardi_vsat")
 
 
 def _create_lowfield_edge_models(device: str, region: str,
-                                 mat: SemiconductorParams) -> None:
+                                 mat: SemiconductorParams,
+                                 scale_n: float = 1.0,
+                                 scale_p: float = 1.0) -> None:
     """Doping-dependent low-field mobility, averaged onto edges.
 
     Depends only on the (fixed) doping, so no solution derivatives are
     needed; symbolic diff of the edge models w.r.t. any solution variable
     is zero and they can be referenced by name inside current expressions.
+
+    ``scale_n`` / ``scale_p`` are calibration multipliers (surface
+    orientation, strain, BTE matching - the knobs a drift-diffusion
+    flow tunes against a higher-order reference).  1.0 leaves the
+    expressions character-identical to the uncalibrated form.
     """
     mu_n = (f"{mat.mu_min_n} + ({mat.mu_max_n} - {mat.mu_min_n})"
             f"/(1 + (TotalDoping/{mat.nref_n})^{mat.alpha_n})")
     mu_p = (f"{mat.mu_min_p} + ({mat.mu_max_p} - {mat.mu_min_p})"
             f"/(1 + (TotalDoping/{mat.nref_p})^{mat.alpha_p})")
+    if scale_n != 1.0:
+        mu_n = f"{scale_n} * ({mu_n})"
+    if scale_p != 1.0:
+        mu_p = f"{scale_p} * ({mu_p})"
     CreateNodeModel(device, region, "mu_n_lf_node", mu_n)
     CreateNodeModel(device, region, "mu_p_lf_node", mu_p)
     for nmodel, emodel in (("mu_n_lf_node", "mu_n_lf"),
@@ -54,7 +65,9 @@ _EPAR = "((((Potential@n0 - Potential@n1)*EdgeInverseLength)^2 + 1e-4)^(0.5))"
 
 
 def create_mobility(device: str, region: str, mat: SemiconductorParams,
-                    model: str = "doping_vsat") -> tuple[str, str]:
+                    model: str = "doping_vsat",
+                    scale_n: float = 1.0,
+                    scale_p: float = 1.0) -> tuple[str, str]:
     """Set up mobility models on ``region``; return (mu_n, mu_p) expressions."""
     if model not in MOBILITY_MODELS:
         raise ValueError(
@@ -66,7 +79,8 @@ def create_mobility(device: str, region: str, mat: SemiconductorParams,
     if model == "const":
         return "mu_n", "mu_p"
 
-    _create_lowfield_edge_models(device, region, mat)
+    _create_lowfield_edge_models(device, region, mat,
+                                 scale_n=scale_n, scale_p=scale_p)
     if model == "doping":
         return "mu_n_lf", "mu_p_lf"
 
