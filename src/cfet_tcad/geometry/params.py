@@ -20,7 +20,7 @@ class DeviceParams:
 
     name: str = "nanosheet"
     polarity: str = "n"  # "n" (CFET top device) or "p" (CFET bottom device)
-    structure: str = "nanosheet_2d"  # "nanosheet_2d" | "gaa_3d"
+    structure: str = "nanosheet_2d"  # "nanosheet_2d" | "gaa_3d" | "cfet_2d"
 
     # geometry [nm]
     l_gate_nm: float = 15.0
@@ -36,6 +36,12 @@ class DeviceParams:
     # gate stack
     gate_workfunction_ev: float = 4.40  # ~n-type WF; use ~4.82 for pFET
 
+    # CFET stack (structure == "cfet_2d"): per-device gate metals and the
+    # unmeshed spacer between the stacked sheets (occupied by gate metal)
+    gate_workfunction_n_ev: float = 4.50
+    gate_workfunction_p_ev: float = 4.72
+    t_gap_nm: float = 10.0
+
     # current scaling: effective width = sheet width x number of sheets
     sheet_width_nm: float = 20.0
     n_sheets: int = 1
@@ -43,9 +49,9 @@ class DeviceParams:
     def __post_init__(self):
         if self.polarity not in ("n", "p"):
             raise ValueError(f"polarity must be 'n' or 'p', got {self.polarity!r}")
-        if self.structure not in ("nanosheet_2d", "gaa_3d"):
+        if self.structure not in ("nanosheet_2d", "gaa_3d", "cfet_2d"):
             raise ValueError(
-                f"structure must be 'nanosheet_2d' or 'gaa_3d', "
+                f"structure must be 'nanosheet_2d', 'gaa_3d' or 'cfet_2d', "
                 f"got {self.structure!r}")
         for attr in ("l_gate_nm", "t_si_nm", "t_ox_nm", "l_sd_nm",
                      "junction_lambda_nm", "sd_doping_cm3", "channel_doping_cm3",

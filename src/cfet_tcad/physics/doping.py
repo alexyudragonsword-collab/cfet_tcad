@@ -24,15 +24,20 @@ def _sd_profile(x1: float, x2: float, lam: float) -> str:
     return f"({left} + {right})"
 
 
-def create_doping(device: str, region: str, params: DeviceParams) -> None:
-    """Create Donors, Acceptors, and NetDoping node models on ``region``."""
+def create_doping(device: str, region: str, params: DeviceParams,
+                  polarity: str | None = None) -> None:
+    """Create Donors, Acceptors, and NetDoping node models on ``region``.
+
+    ``polarity`` overrides ``params.polarity`` for multi-device layouts
+    (the CFET stack dopes its n and p sheets independently).
+    """
     x1 = params.l_sd
     x2 = params.l_sd + params.l_gate
     profile = _sd_profile(x1, x2, params.junction_lambda)
     sd = params.sd_doping_cm3
     ch = params.channel_doping_cm3
 
-    if params.polarity == "n":
+    if (polarity or params.polarity) == "n":
         donors = f"{sd} * {profile}"
         acceptors = f"{ch}"
     else:

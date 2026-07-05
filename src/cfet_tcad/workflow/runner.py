@@ -180,6 +180,45 @@ class Runner:
         return (f"3D GAA {dev.sheet_width_nm:.0f}x{dev.t_si_nm:.0f} nm, "
                 f"{dev.n_sheets} sheet(s)")
 
+    def run_cfet_idvg(self) -> dict:
+        """Common-gate transfer sweep of the CFET stack, biased like a CMOS
+        pair: nFET source grounded / drain at vdd, pFET source at vdd /
+        drain grounded.  One sweep yields both devices' transfer curves
+        from a single coupled solve (pFET Vgs = Vg - vdd)."""
+        sim = self.cfg.simulation
+        vdd = sim.vdd
+        scale = self.current_scale
+        results = {"curves": [], "fom": {}}
+
+        self._ramp(["source_p"], vdd, sim.vd_step)
+        self._ramp(["drain_n"], vdd, sim.vd_step)
+        points = self._sweep(self.gates, sim.vg_start, sim.vg_stop,
+                             sim.vg_step, vtk_tag="cfet_idvg")
+
+        vg = [p.biases[self.gates[0]] for p in points]
+        id_n = [p.currents["drain_n"] * scale for p in points]
+        id_p = [p.currents["drain_p"] * scale for p in points]
+        results["curves"] = [
+            {"vg": vg, "id": id_n, "label": "nFET (top)"},
+            {"vg": vg, "id": id_p, "label": "pFET (bottom)"},
+        ]
+        results["fom"]["nFET"] = extract_idvg_fom(
+            vg, id_n, polarity="n", icrit=self.cfg.extract.icrit_a)
+        results["fom"]["pFET"] = extract_idvg_fom(
+            [v - vdd for v in vg], id_p, polarity="p",
+            icrit=self.cfg.extract.icrit_a)
+
+        rows = [{"vg_v": g, "id_n_a": a, "id_p_a": b,
+                 "is_n_a": p.currents["source_n"] * scale,
+                 "is_p_a": p.currents["source_p"] * scale}
+                for g, a, b, p in zip(vg, id_n, id_p, points)]
+        write_iv_csv(self.out / "cfet_idvg.csv", rows)
+        plot_idvg(self.out / "cfet_idvg.png", results["curves"],
+                  title=(f"{self.device} CFET stack common-gate sweep "
+                         f"(Vdd = {vdd} V, {self._width_label()})"))
+        write_json(self.out / "fom.json", results["fom"])
+        return results
+
     # --- entry point -------------------------------------------------------
 
     def run(self) -> dict:
@@ -187,6 +226,8 @@ class Runner:
         self.setup(msh)
         if self.cfg.simulation.type == "idvg":
             return self.run_idvg()
+        if self.cfg.simulation.type == "cfet_idvg":
+            return self.run_cfet_idvg()
         return self.run_idvd()
 
 

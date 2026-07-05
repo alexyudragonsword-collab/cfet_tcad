@@ -49,11 +49,14 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     ohmic_contacts = {c: r for c, r in layout.contacts.items()
                       if r in silicon_regions}
 
+    def polarity_of(region: str) -> str:
+        return layout.silicon_polarity.get(region, params.polarity)
+
     # potential-only system
     for region in silicon_regions:
         eq.set_silicon_parameters(device, region, SILICON, temperature,
                                   taun=taun, taup=taup)
-        create_doping(device, region, params)
+        create_doping(device, region, params, polarity=polarity_of(region))
         eq.create_silicon_potential_only(device, region)
     for region in oxide_regions:
         eq.set_oxide_parameters(device, region, oxide)
@@ -61,8 +64,9 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     for contact, region in ohmic_contacts.items():
         eq.create_ohmic_potential_contact(device, region, contact)
     for contact, region in gate_contacts.items():
-        eq.create_gate_contact(device, region, contact,
-                               params.gate_workfunction_ev, SILICON)
+        wf = layout.gate_workfunctions.get(contact,
+                                           params.gate_workfunction_ev)
+        eq.create_gate_contact(device, region, contact, wf, SILICON)
     for interface in layout.interfaces:
         eq.create_semiconductor_oxide_interface(device, interface)
 
@@ -80,17 +84,22 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     devsim.solve(**solver_args)
 
     if quantum_model == "density_gradient":
-        # transport carrier only: the minority carrier's DG equation is
-        # near-singular in the depleted channel and destabilizes Newton
-        carriers = ("Electrons",) if params.polarity == "n" else ("Holes",)
+        # transport carrier only (per region): the minority carrier's DG
+        # equation is near-singular in the depleted channel and
+        # destabilizes Newton
+        def carriers_of(region: str) -> tuple:
+            return (("Electrons",) if polarity_of(region) == "n"
+                    else ("Holes",))
+
         for region in silicon_regions:
             create_density_gradient(device, region, SILICON,
                                     gamma_n=dg_gamma_n, gamma_p=dg_gamma_p,
-                                    carriers=carriers)
+                                    carriers=carriers_of(region))
             eq.apply_quantum_currents(device, region, *mobilities[region],
-                                      carriers=carriers)
-        for contact in ohmic_contacts:
-            create_dg_contact(device, contact, carriers=carriers)
+                                      carriers=carriers_of(region))
+        for contact, region in ohmic_contacts.items():
+            create_dg_contact(device, contact,
+                              carriers=carriers_of(region))
         _solve_dg_with_homotopy(device, solver_args)
     elif quantum_model != "none":
         raise ValueError(f"unknown quantum_model {quantum_model!r}")

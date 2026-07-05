@@ -27,6 +27,12 @@ class MeshLayout:
     contacts: dict = field(default_factory=dict)
     #: interface name -> (region0, region1)
     interfaces: dict = field(default_factory=dict)
+    #: silicon region -> "n"/"p"; empty = use DeviceParams.polarity
+    #: (multi-device layouts such as the CFET stack set this per sheet)
+    silicon_polarity: dict = field(default_factory=dict)
+    #: gate contact -> metal workfunction [eV]; empty = use
+    #: DeviceParams.gate_workfunction_ev
+    gate_workfunctions: dict = field(default_factory=dict)
 
 
 class GeometryBuilder(ABC):
