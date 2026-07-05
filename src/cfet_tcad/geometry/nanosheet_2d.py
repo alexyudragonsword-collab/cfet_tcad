@@ -132,4 +132,7 @@ class Nanosheet2DBuilder(GeometryBuilder):
                 INTERFACE_SI_OX_TOP: (REGION_SILICON, REGION_OXIDE_TOP),
                 INTERFACE_SI_OX_BOTTOM: (REGION_SILICON, REGION_OXIDE_BOTTOM),
             },
+            semiconductor_materials={REGION_SILICON: d.channel_material},
+            gate_semiconductors={CONTACT_GATE_TOP: REGION_SILICON,
+                                 CONTACT_GATE_BOTTOM: REGION_SILICON},
         )

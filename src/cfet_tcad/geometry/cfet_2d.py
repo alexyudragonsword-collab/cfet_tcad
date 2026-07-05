@@ -120,6 +120,8 @@ class CFETStack2DBuilder(GeometryBuilder):
 
                 wf = (d.gate_workfunction_n_ev if suffix == "n"
                       else d.gate_workfunction_p_ev)
+                mat = (d.channel_material_n if suffix == "n"
+                       else d.channel_material_p)
                 layout.regions.update({silicon: "Silicon",
                                        ox_bot: "Oxide", ox_top: "Oxide"})
                 layout.contacts.update({source: silicon, drain: silicon,
@@ -128,6 +130,9 @@ class CFETStack2DBuilder(GeometryBuilder):
                                           if_top: (silicon, ox_top)})
                 layout.silicon_polarity[silicon] = suffix
                 layout.gate_workfunctions.update({gate_lo: wf, gate_hi: wf})
+                layout.semiconductor_materials[silicon] = mat
+                layout.gate_semiconductors.update({gate_lo: silicon,
+                                                   gate_hi: silicon})
 
             gmsh.model.mesh.generate(2)
             gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)

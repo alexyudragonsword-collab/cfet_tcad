@@ -68,11 +68,27 @@ SILICON = SemiconductorParams(
     vsat_n=1.07e7, vsat_p=8.37e6, beta_n=2.0, beta_p=1.0,
 )
 
+# Compressively strained Si0.7Ge0.3 (typical CFET pFET channel).
+# Bandgap narrowed ~0.14 eV (mostly a valence band offset), intrinsic
+# density up accordingly, and the strain-enhanced hole mobility is the
+# reason industry uses it: it rebalances pFET drive against the nFET.
+SIGE30 = SemiconductorParams(
+    name="SiGe30",
+    eps_r=12.2,
+    n_i=1.3e11,
+    affinity_ev=4.05,
+    eg_ev=0.98,
+    mu_max_n=1000.0, mu_min_n=60.0, nref_n=9.20e16, alpha_n=0.711,
+    mu_max_p=900.0, mu_min_p=60.0, nref_p=2.23e17, alpha_p=0.719,
+    vsat_n=1.0e7, vsat_p=8.4e6, beta_n=2.0, beta_p=1.0,
+)
+
 SIO2 = InsulatorParams(name="SiO2", eps_r=3.9)
 HFO2 = InsulatorParams(name="HfO2", eps_r=22.0)
 
 MATERIALS = {
     "Silicon": SILICON,
+    "SiGe30": SIGE30,
     "SiO2": SIO2,
     "HfO2": HFO2,
 }

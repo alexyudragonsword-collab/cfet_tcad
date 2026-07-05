@@ -7,7 +7,7 @@ from ..geometry.params import DeviceParams
 from ..physics import equations as eq
 from ..physics.doping import create_doping
 from ..physics.lombardi import apply_lombardi_currents, rewire_lombardi_contact
-from ..physics.materials import MATERIALS, SILICON
+from ..physics.materials import MATERIALS
 from ..physics.mobility import create_mobility
 from ..physics.quantum import create_density_gradient, create_dg_contact
 
@@ -73,10 +73,20 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     def polarity_of(region: str) -> str:
         return layout.silicon_polarity.get(region, params.polarity)
 
+    def material_of(region: str):
+        key = layout.semiconductor_materials.get(region,
+                                                 params.channel_material)
+        try:
+            return MATERIALS[key]
+        except KeyError:
+            raise ValueError(
+                f"unknown semiconductor material {key!r} for region "
+                f"{region!r}; available: {sorted(MATERIALS)}") from None
+
     # potential-only system
     for region in silicon_regions:
-        eq.set_silicon_parameters(device, region, SILICON, temperature,
-                                  taun=taun, taup=taup)
+        eq.set_silicon_parameters(device, region, material_of(region),
+                                  temperature, taun=taun, taup=taup)
         create_doping(device, region, params, polarity=polarity_of(region))
         eq.create_silicon_potential_only(device, region)
     for region in oxide_regions:
@@ -90,7 +100,12 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     for contact, region in gate_contacts.items():
         wf = layout.gate_workfunctions.get(contact,
                                            params.gate_workfunction_ev)
-        eq.create_gate_contact(device, region, contact, wf, SILICON)
+        # the midgap workfunction reference belongs to the gated sheet's
+        # semiconductor (matters for heteromaterial stacks)
+        gated = layout.gate_semiconductors.get(contact)
+        semi = material_of(gated) if gated else MATERIALS[
+            params.channel_material]
+        eq.create_gate_contact(device, region, contact, wf, semi)
     for interface in layout.interfaces:
         eq.create_semiconductor_oxide_interface(device, interface)
 
@@ -99,7 +114,8 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     # promote to coupled drift-diffusion
     mobilities = {}
     for region in silicon_regions:
-        mu_n, mu_p = create_mobility(device, region, SILICON, base_mobility)
+        mu_n, mu_p = create_mobility(device, region, material_of(region),
+                                     base_mobility)
         mobilities[region] = (mu_n, mu_p)
         eq.create_silicon_dd(device, region, mu_n, mu_p)
     for contact in ohmic_contacts:
@@ -110,7 +126,7 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
 
     if lombardi:
         for region in silicon_regions:
-            apply_lombardi_currents(device, region, SILICON)
+            apply_lombardi_currents(device, region, material_of(region))
         for contact in ohmic_contacts:
             rewire_lombardi_contact(
                 device, contact,
@@ -126,7 +142,7 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
                     else ("Holes",))
 
         for region in silicon_regions:
-            create_density_gradient(device, region, SILICON,
+            create_density_gradient(device, region, material_of(region),
                                     gamma_n=dg_gamma_n, gamma_p=dg_gamma_p,
                                     carriers=carriers_of(region))
             eq.apply_quantum_currents(device, region, *mobilities[region],

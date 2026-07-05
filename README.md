@@ -56,6 +56,9 @@ cfet-tcad run configs/cfet_vtc_2d.yaml
 # 完整 3D CFET: 两个堆叠的 3D 环栅纳米片, 共栅联合求解 (约数分钟)
 cfet-tcad run configs/cfet_3d.yaml
 
+# SiGe 沟道 pFET 的 CFET (异质材料 + 功函数重调, 提升 n/p 驱动平衡)
+cfet-tcad run configs/cfet_2d_sige.yaml
+
 # 只生成网格
 cfet-tcad mesh configs/nsheet_nfet_2d.yaml
 
@@ -126,6 +129,15 @@ Caughey-Thomas 掺杂依赖低场迁移率 + Caughey-Thomas 速度饱和。
 迁移率表达式内联进 SG 电流公式，利用 DEVSIM 的模型感知符号求导
 （`diff()`）获得含场依赖项的精确 Newton 雅可比。
 
+**异质沟道材料**：材料库含 Silicon 与应变 SiGe30（Si₀.₇Ge₀.₃，禁带
+0.98eV、应变增强空穴迁移率），按半导体区独立选材：单管用
+`device.channel_material`，CFET 堆叠用 `channel_material_n/_p`（两片被
+栅金属电学隔离，无异质结耦合，各区参考能级自洽）。栅功函数的 midgap
+参考自动取所栅控片的材料。参考结果：SiGe30 pFET 片使 CFET 的 n/p 驱动
+平衡从 0.65 提升到 0.76（等 Vt、栅金属按 SiGe 能带重调至 4.59eV —— 与
+真实工艺一致），线性区空穴驱动 +30% 以上；饱和区收益被速度饱和压缩，
+vsat_p 为标定旋钮。
+
 **垂直场迁移率退化**（`mobility_model: lombardi_vsat`，2D 结构）：
 Lombardi (CVT) 表面声子 + 表面粗糙度散射，Matthiessen 与掺杂低场迁移率
 及速度饱和合成。垂直场 E⊥ 需要矢量场，用 DEVSIM element 级装配：
@@ -184,9 +196,10 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
   CFET 反相器 VTC（器件/电路混合求解）✔；3D CFET 堆叠 ✔
 - 参数扫描 / DOE（多进程并行，`cfet-tcad sweep`）✔
 - Lombardi (CVT) 垂直场迁移率（element 级装配，2D）✔
+- 异质沟道材料（SiGe30 pFET，按区材料架构）✔
 - **后续方向**：Lombardi 扩展到 3D（@en0-3 四面体导数）、氧化层内 DG、
   element 级量子电流（解除 lombardi×DG 互斥）、多纳米片堆叠、
-  应变/异质材料（SiGe pFET 沟道）
+  Ge 组分连续可调的 SiGe 参数插值
 
 ## 开发注意事项
 

@@ -1,0 +1,48 @@
+# CFET stack with a strained SiGe30 pFET channel (industry practice:
+# the enhanced hole mobility rebalances pFET drive against the nFET).
+# Compare fom.json against configs/cfet_2d.yaml (all-Si) to isolate the
+# channel-material effect.
+device:
+  name: cfet_sige
+  structure: cfet_2d
+  l_gate_nm: 15.0
+  t_si_nm: 5.0
+  t_ox_nm: 1.0
+  l_sd_nm: 15.0
+  t_gap_nm: 10.0
+  junction_lambda_nm: 1.5
+  sd_doping_cm3: 1.0e20
+  channel_doping_cm3: 1.0e15
+  gate_workfunction_n_ev: 4.50
+  # SiGe30's smaller bandgap (midgap reference 4.54 eV vs Si 4.61) shifts
+  # the pFET Vt; the gate metal is re-tuned to restore |Vt| ~ 0.38 V --
+  # exactly what real SiGe-channel processes do
+  gate_workfunction_p_ev: 4.59
+  channel_material_n: Silicon
+  channel_material_p: SiGe30
+  sheet_width_nm: 20.0
+  n_sheets: 1
+
+mesh:
+  nx_sd: 24
+  nx_gate: 40
+  ny_si: 12
+  ny_ox: 4
+
+physics:
+  mobility_model: doping_vsat
+
+simulation:
+  type: cfet_idvg
+  vdd: 0.7
+  vg_start: 0.0
+  vg_stop: 0.7
+  vg_step: 0.025
+
+output:
+  directory: results/cfet_sige
+  vtk: true
+  vtk_stride: 7
+
+extract:
+  icrit_a: 1.0e-8

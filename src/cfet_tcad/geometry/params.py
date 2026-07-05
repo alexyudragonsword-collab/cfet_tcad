@@ -37,10 +37,16 @@ class DeviceParams:
     # gate stack
     gate_workfunction_ev: float = 4.40  # ~n-type WF; use ~4.82 for pFET
 
-    # CFET stack (structure == "cfet_2d"): per-device gate metals and the
+    # channel semiconductor (MATERIALS key): single-sheet structures
+    channel_material: str = "Silicon"
+
+    # CFET stack (structure == "cfet_2d"/"cfet_3d"): per-device gate
+    # metals, per-sheet channel materials (e.g. SiGe30 pFET), and the
     # unmeshed spacer between the stacked sheets (occupied by gate metal)
     gate_workfunction_n_ev: float = 4.50
     gate_workfunction_p_ev: float = 4.72
+    channel_material_n: str = "Silicon"
+    channel_material_p: str = "Silicon"
     t_gap_nm: float = 10.0
 
     # current scaling: effective width = sheet width x number of sheets

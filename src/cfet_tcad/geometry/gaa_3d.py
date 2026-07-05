@@ -167,4 +167,6 @@ class GAANanosheet3DBuilder(GeometryBuilder):
                 CONTACT_GATE: REGION_OXIDE,
             },
             interfaces={INTERFACE_SI_OX: (REGION_SILICON, REGION_OXIDE)},
+            semiconductor_materials={REGION_SILICON: d.channel_material},
+            gate_semiconductors={CONTACT_GATE: REGION_SILICON},
         )

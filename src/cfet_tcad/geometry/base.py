@@ -33,6 +33,12 @@ class MeshLayout:
     #: gate contact -> metal workfunction [eV]; empty = use
     #: DeviceParams.gate_workfunction_ev
     gate_workfunctions: dict = field(default_factory=dict)
+    #: semiconductor region -> cfet_tcad.physics.materials.MATERIALS key
+    #: (e.g. "SiGe30" for a strained pFET sheet); empty = "Silicon"
+    semiconductor_materials: dict = field(default_factory=dict)
+    #: gate contact -> the semiconductor region it gates (fixes the
+    #: midgap workfunction reference in heteromaterial stacks)
+    gate_semiconductors: dict = field(default_factory=dict)
 
 
 class GeometryBuilder(ABC):

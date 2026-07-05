@@ -100,6 +100,10 @@ class CFETStack3DBuilder(GeometryBuilder):
                 layout.interfaces[iface] = (silicon, oxide)
                 layout.silicon_polarity[silicon] = suffix
                 layout.gate_workfunctions[gate] = wf
+                layout.semiconductor_materials[silicon] = (
+                    d.channel_material_n if suffix == "n"
+                    else d.channel_material_p)
+                layout.gate_semiconductors[gate] = silicon
 
             gmsh.model.mesh.generate(3)
             gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
