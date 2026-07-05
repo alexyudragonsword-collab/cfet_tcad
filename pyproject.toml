@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfet-tcad"
-version = "0.1.0"
+version = "0.5"
 description = "Open-source CFET / nanosheet TCAD simulation system built on DEVSIM + gmsh, with VTK output for VisIt"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
+authors = [{ name = "Yu Rui" }]
 dependencies = [
     "devsim>=2.10",
     "gmsh>=4.11",

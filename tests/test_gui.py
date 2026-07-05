@@ -101,6 +101,24 @@ def test_main_window_constructs(qapp, tmp_path):
     win.close()
 
 
+def test_about_dialog_and_version(qapp):
+    import cfet_tcad
+    from cfet_tcad.gui.about_dialog import ABOUT_HTML, AboutDialog
+
+    assert cfet_tcad.__version__ == "0.5"
+    assert cfet_tcad.__author__ == "Yu Rui"
+    assert "Yu Rui" in ABOUT_HTML and "0.5" in ABOUT_HTML
+    dlg = AboutDialog()
+    assert dlg.windowTitle() == "About cfet_tcad"
+    dlg.close()
+
+    # pyproject stays in sync with the package version
+    import re
+    from pathlib import Path
+    text = Path("pyproject.toml").read_text()
+    assert re.search(r'^version = "0\.5"$', text, re.M)
+
+
 def test_help_guide_renders_with_images(qapp):
     import re
 

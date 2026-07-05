@@ -16,7 +16,8 @@ Inspect                cfet_tcad.extract (Vt/SS/DIBL/Ion/Ioff)
 import ctypes.util
 import os
 
-__version__ = "0.1.0"
+__version__ = "0.5"
+__author__ = "Yu Rui"
 
 
 def _ensure_devsim_math_libs() -> None:

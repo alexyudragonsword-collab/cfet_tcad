@@ -27,7 +27,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+import cfet_tcad
+
 from ..workflow.sweep import parse_param_spec
+from .about_dialog import AboutDialog
 from .config_form import ConfigForm
 from .experiment_table import ExperimentModel
 from .help_view import HelpView
@@ -65,7 +68,7 @@ class SweepDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, project_root: Path | None = None):
         super().__init__()
-        self.setWindowTitle("cfet_tcad workbench")
+        self.setWindowTitle(f"cfet_tcad workbench v{cfet_tcad.__version__}")
         self.resize(1280, 800)
         self.project_root = Path(project_root or Path.cwd())
         self.results_root = self.project_root / "results" / "gui"
@@ -112,6 +115,12 @@ class MainWindow(QMainWindow):
         bar.addSeparator()
         bar.addAction("Structure", self.preview_structure)
         bar.addAction("Open config folder...", self.pick_folder)
+
+        # menu bar
+        help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction(
+            "User Guide", lambda: self.tabs.setCurrentWidget(self.help))
+        help_menu.addAction("About cfet_tcad", self.show_about)
 
         # wiring
         self.config_list.currentTextChanged.connect(self.load_config)
@@ -257,6 +266,9 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.results)
         if (exp.out_dir / "vtk").is_dir():
             self.structure.load_dir(exp.out_dir / "vtk")
+
+    def show_about(self) -> None:
+        AboutDialog(self).exec()
 
     def _refresh_status(self) -> None:
         counts: dict = {}
