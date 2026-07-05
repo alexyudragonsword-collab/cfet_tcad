@@ -110,3 +110,47 @@ def extract_dibl(fom_lin: dict, fom_sat: dict,
     return dibl(sign * fom_lin["vt_constant_current_v"],
                 sign * fom_sat["vt_constant_current_v"],
                 abs(vd_lin), abs(vd_sat))
+
+
+def extract_vtc_fom(vin, vout, vdd: float) -> dict:
+    """Inverter VTC figures of merit.
+
+    VM: switching threshold (vout == vin crossing); gain: max |dVout/dVin|;
+    VIL/VIH: unity-gain input voltages; noise margins NML = VIL - VOL,
+    NMH = VOH - VIH with VOL/VOH read at the sweep ends.
+    """
+    vin = np.asarray(vin, dtype=float)
+    vout = np.asarray(vout, dtype=float)
+    order = np.argsort(vin)
+    vin, vout = vin[order], vout[order]
+
+    # switching threshold: vout - vin crosses zero
+    diff = vout - vin
+    vm = float("nan")
+    cross = np.nonzero(np.diff(np.sign(diff)))[0]
+    if len(cross):
+        j = cross[0]
+        vm = float(vin[j] + diff[j] * (vin[j + 1] - vin[j])
+                   / (diff[j] - diff[j + 1]))
+
+    gain = -np.gradient(vout, vin)  # inverting: positive numbers
+    max_gain = float(np.max(gain))
+
+    # unity-gain points bracket the transition region
+    above = np.nonzero(gain >= 1.0)[0]
+    vil = float(vin[above[0]]) if len(above) else float("nan")
+    vih = float(vin[above[-1]]) if len(above) else float("nan")
+
+    voh = float(vout[0])
+    vol = float(vout[-1])
+    return {
+        "vm_v": vm,
+        "max_gain": max_gain,
+        "vil_v": vil,
+        "vih_v": vih,
+        "voh_v": voh,
+        "vol_v": vol,
+        "nml_v": vil - vol,
+        "nmh_v": voh - vih,
+        "vdd_v": vdd,
+    }

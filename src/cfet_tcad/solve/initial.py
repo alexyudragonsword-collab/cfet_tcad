@@ -28,12 +28,18 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
                       mobility_model: str = "doping_vsat",
                       quantum_model: str = "none",
                       dg_gamma_n: float = 1.0, dg_gamma_p: float = 1.0,
+                      circuit_contacts: dict | None = None,
                       solver_args: dict | None = None) -> None:
     """Assemble physics on all regions and solve the equilibrium state.
 
     With ``quantum_model="density_gradient"`` the classical equilibrium is
     solved first, then the DG quantum potentials are added and the system
     re-solved (with a homotopy on the DG coefficient as fallback).
+
+    ``circuit_contacts`` maps ohmic contact names to circuit node names
+    (nodes must already exist via circuit_element); those contacts become
+    part of DEVSIM's mixed device/circuit system instead of taking a bias
+    parameter.
 
     After this returns, the device holds a converged drift-diffusion
     solution at zero bias and is ready for bias ramping.
@@ -61,8 +67,11 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     for region in oxide_regions:
         eq.set_oxide_parameters(device, region, oxide)
         eq.create_oxide_potential_only(device, region)
+    circuit_contacts = circuit_contacts or {}
     for contact, region in ohmic_contacts.items():
-        eq.create_ohmic_potential_contact(device, region, contact)
+        eq.create_ohmic_potential_contact(
+            device, region, contact,
+            circuit_node=circuit_contacts.get(contact))
     for contact, region in gate_contacts.items():
         wf = layout.gate_workfunctions.get(contact,
                                            params.gate_workfunction_ev)
@@ -79,7 +88,8 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
         mobilities[region] = (mu_n, mu_p)
         eq.create_silicon_dd(device, region, mu_n, mu_p)
     for contact in ohmic_contacts:
-        eq.create_ohmic_dd_contact(device, contact)
+        eq.create_ohmic_dd_contact(
+            device, contact, circuit_node=circuit_contacts.get(contact))
 
     devsim.solve(**solver_args)
 

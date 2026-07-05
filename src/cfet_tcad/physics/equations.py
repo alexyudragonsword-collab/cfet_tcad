@@ -137,21 +137,37 @@ def _ensure_contact_charge_edge(device: str, region: str) -> None:
                                    "Permittivity*ElectricField", "Potential")
 
 
-def create_ohmic_potential_contact(device: str, region: str,
-                                   contact: str) -> None:
-    """Ohmic contact (source/drain): pins Potential to bias + built-in."""
+def create_ohmic_potential_contact(device: str, region: str, contact: str,
+                                   circuit_node: str | None = None) -> None:
+    """Ohmic contact (source/drain): pins Potential to bias + built-in.
+
+    With ``circuit_node`` the boundary voltage is a circuit unknown instead
+    of a parameter, coupling the contact into DEVSIM's mixed device/circuit
+    Newton system (the node must already exist via a circuit_element).
+    """
     _ensure_contact_charge_edge(device, region)
-    bias = contact_bias_name(contact)
-    devsim.set_parameter(device=device, name=bias, value=0.0)
+    if circuit_node is None:
+        bias = contact_bias_name(contact)
+        devsim.set_parameter(device=device, name=bias, value=0.0)
+    else:
+        bias = circuit_node
     model = (f"Potential - {bias} + ifelse(NetDoping > 0,"
              f" -V_t*log({CELEC}/n_i), V_t*log({CHOLE}/n_i))")
     name = f"{contact}nodemodel"
     CreateContactNodeModel(device, contact, name, model)
     CreateContactNodeModel(device, contact, f"{name}:Potential", "1")
-    devsim.contact_equation(device=device, contact=contact,
-                            name="PotentialEquation",
-                            node_model=name,
-                            edge_charge_model="contactcharge_edge")
+    if circuit_node is None:
+        devsim.contact_equation(device=device, contact=contact,
+                                name="PotentialEquation",
+                                node_model=name,
+                                edge_charge_model="contactcharge_edge")
+    else:
+        CreateContactNodeModel(device, contact, f"{name}:{bias}", "-1")
+        devsim.contact_equation(device=device, contact=contact,
+                                name="PotentialEquation",
+                                node_model=name,
+                                edge_charge_model="contactcharge_edge",
+                                circuit_node=circuit_node)
 
 
 def create_gate_contact(device: str, region: str, contact: str,
@@ -178,8 +194,12 @@ def create_gate_contact(device: str, region: str, contact: str,
                             edge_charge_model="contactcharge_edge")
 
 
-def create_ohmic_dd_contact(device: str, contact: str) -> None:
-    """Pin carriers to their equilibrium values; integrate contact current."""
+def create_ohmic_dd_contact(device: str, contact: str,
+                            circuit_node: str | None = None) -> None:
+    """Pin carriers to their equilibrium values; integrate contact current.
+
+    With ``circuit_node`` the electron/hole contact currents are injected
+    into that circuit node's KCL equation."""
     elec = f"Electrons - ifelse(NetDoping > 0, {CELEC}, n_i^2/{CHOLE})"
     hole = f"Holes - ifelse(NetDoping < 0, {CHOLE}, n_i^2/{CELEC})"
     ename = f"{contact}nodeelectrons"
@@ -188,12 +208,13 @@ def create_ohmic_dd_contact(device: str, contact: str) -> None:
     CreateContactNodeModel(device, contact, f"{ename}:Electrons", "1")
     CreateContactNodeModel(device, contact, hname, hole)
     CreateContactNodeModel(device, contact, f"{hname}:Holes", "1")
+    extra = {} if circuit_node is None else {"circuit_node": circuit_node}
     devsim.contact_equation(device=device, contact=contact, name=ECE_NAME,
                             node_model=ename,
-                            edge_current_model="ElectronCurrent")
+                            edge_current_model="ElectronCurrent", **extra)
     devsim.contact_equation(device=device, contact=contact, name=HCE_NAME,
                             node_model=hname,
-                            edge_current_model="HoleCurrent")
+                            edge_current_model="HoleCurrent", **extra)
 
 
 # --- drift-diffusion -----------------------------------------------------

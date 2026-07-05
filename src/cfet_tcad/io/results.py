@@ -54,6 +54,28 @@ def plot_idvg(path: Path, curves: list[dict], title: str = "") -> Path:
     return path
 
 
+def plot_vtc(path: Path, vin: list, vout: list, i_dd: list,
+             title: str = "") -> Path:
+    """Inverter voltage transfer characteristic + supply current."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig, (ax_v, ax_i) = plt.subplots(1, 2, figsize=(10, 4.2))
+    ax_v.plot(vin, vout, marker="o", ms=3)
+    ax_v.plot(vin, vin, ls=":", c="gray", lw=1)  # vout = vin guide
+    ax_v.set_xlabel("Vin [V]")
+    ax_v.set_ylabel("Vout [V]")
+    ax_v.grid(True, alpha=0.3)
+    ax_i.semilogy(vin, [abs(i) for i in i_dd], marker="o", ms=3, color="C1")
+    ax_i.set_xlabel("Vin [V]")
+    ax_i.set_ylabel("|I_DD| [A] (log)")
+    ax_i.grid(True, alpha=0.3)
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def plot_idvd(path: Path, curves: list[dict], title: str = "") -> Path:
     """Output characteristics: |Id| vs Vd for a set of Vg values."""
     path = Path(path)

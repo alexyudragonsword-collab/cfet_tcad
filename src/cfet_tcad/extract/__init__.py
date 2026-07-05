@@ -2,6 +2,7 @@ from .figures_of_merit import (
     dibl,
     extract_dibl,
     extract_idvg_fom,
+    extract_vtc_fom,
     subthreshold_swing,
     vt_constant_current,
     vt_max_gm,
@@ -14,4 +15,5 @@ __all__ = [
     "dibl",
     "extract_idvg_fom",
     "extract_dibl",
+    "extract_vtc_fom",
 ]

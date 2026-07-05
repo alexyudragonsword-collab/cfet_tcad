@@ -6,11 +6,12 @@ geometry -> mesh -> DEVSIM device -> equilibrium -> bias sweeps
 
 from pathlib import Path
 
-from ..extract import extract_dibl, extract_idvg_fom
+from ..extract import extract_dibl, extract_idvg_fom, extract_vtc_fom
 from ..geometry import BUILDERS
 from ..io import (
     plot_idvd,
     plot_idvg,
+    plot_vtc,
     write_iv_csv,
     write_json,
     write_snapshot,
@@ -54,7 +55,17 @@ class Runner:
         return float(self.cfg.device.n_sheets)
 
     def setup(self, msh_path: Path) -> None:
+        import devsim
+
         load_mesh(msh_path, self.layout, self.device)
+        circuit_contacts = None
+        if self.cfg.simulation.type == "cfet_vtc":
+            # floating inverter output: both drains tied to circuit node
+            # "vout"; the huge resistor to ground creates the node and
+            # makes the zero-current equilibrium well-posed
+            devsim.circuit_element(name="R1", n1="vout", n2="0",
+                                   value=1.0e15)
+            circuit_contacts = {"drain_n": "vout", "drain_p": "vout"}
         phys = self.cfg.physics
         setup_equilibrium(
             self.device, self.layout, self.cfg.device,
@@ -64,6 +75,7 @@ class Runner:
             mobility_model=phys.mobility_model,
             quantum_model=phys.quantum_model,
             dg_gamma_n=phys.dg_gamma_n, dg_gamma_p=phys.dg_gamma_p,
+            circuit_contacts=circuit_contacts,
             solver_args=self._solver,
         )
 
@@ -219,6 +231,51 @@ class Runner:
         write_json(self.out / "fom.json", results["fom"])
         return results
 
+    def run_cfet_vtc(self) -> dict:
+        """Inverter voltage transfer characteristic of the CFET stack.
+
+        Vout is the floating node shared by both drains, solved
+        self-consistently by the mixed device/circuit Newton system; the
+        input sweeps the common gate.  Also records the supply current
+        through the pFET source (short-circuit current bell curve).
+        """
+        import devsim
+
+        from ..solve.sweep import contact_current
+
+        sim = self.cfg.simulation
+        vdd = sim.vdd
+        scale = self.current_scale
+
+        self._ramp(["source_p"], vdd, sim.vd_step)
+
+        n_steps = max(1, round(abs(sim.vg_stop - sim.vg_start)
+                               / abs(sim.vg_step)))
+        vin, vout, i_dd = [], [], []
+        snapshots = []
+        for i in range(n_steps + 1):
+            v = sim.vg_start + (sim.vg_stop - sim.vg_start) * i / n_steps
+            if i > 0:
+                self._ramp(self.gates, v, sim.vg_step)
+            vin.append(v)
+            vout.append(devsim.get_circuit_node_value(node="vout"))
+            i_dd.append(contact_current(self.device, "source_p") * scale)
+            if self.cfg.output.vtk and (
+                    i % self.cfg.output.vtk_stride == 0 or i == n_steps):
+                prefix = self.out / "vtk" / f"vtc_{i:03d}"
+                snapshots.append((v, write_snapshot(prefix)))
+        if snapshots:
+            write_sweep_collection(self.out / "vtk" / "vtc.pvd", snapshots)
+
+        fom = extract_vtc_fom(vin, vout, vdd)
+        rows = [{"vin_v": a, "vout_v": b, "i_dd_a": c}
+                for a, b, c in zip(vin, vout, i_dd)]
+        write_iv_csv(self.out / "vtc.csv", rows)
+        plot_vtc(self.out / "vtc.png", vin, vout, i_dd,
+                 title=f"{self.device} CFET inverter VTC (Vdd = {vdd} V)")
+        write_json(self.out / "fom.json", fom)
+        return {"vin": vin, "vout": vout, "i_dd": i_dd, "fom": fom}
+
     # --- entry point -------------------------------------------------------
 
     def run(self) -> dict:
@@ -228,6 +285,8 @@ class Runner:
             return self.run_idvg()
         if self.cfg.simulation.type == "cfet_idvg":
             return self.run_cfet_idvg()
+        if self.cfg.simulation.type == "cfet_vtc":
+            return self.run_cfet_vtc()
         return self.run_idvd()
 
 
