@@ -118,9 +118,27 @@ def test_lombardi_3d_converges_with_degraded_mobility(tmp_path,
     assert mu.min() < 800.0  # confinement fields already degrade at Vg=0
 
 
-def test_lombardi_with_quantum_rejected():
-    from cfet_tcad.workflow.config import PhysicsConfig
-
-    with pytest.raises(ValueError, match="lombardi"):
-        PhysicsConfig(mobility_model="lombardi_vsat",
+def test_full_physics_cvt_plus_dg_converges(tmp_path, fresh_devsim):
+    """The Sentaurus-default combination: CVT surface mobility and the
+    density-gradient quantum correction together.  Both homotopies must
+    reach full strength with both effects present in the solution."""
+    devsim = fresh_devsim
+    msh = tmp_path / "dev.msh"
+    layout = Nanosheet2DBuilder(PARAMS, MESH).build(msh)
+    device = load_mesh(msh, layout, PARAMS.name)
+    setup_equilibrium(device, layout, PARAMS,
+                      mobility_model="lombardi_vsat",
                       quantum_model="density_gradient")
+    assert devsim.get_parameter(device=device, name="cvt_scale") == 1.0
+    assert devsim.get_parameter(device=device, name="dg_scale") == 1.0
+
+    ramp_biases(device, ["drain"], 0.05, step=0.05)
+    ramp_biases(device, ["gate_top", "gate_bottom"], 0.7, step=0.05)
+
+    lam = np.array(devsim.get_node_model_values(
+        device=device, region="silicon", name="Lambda_n"))
+    mu = np.array(devsim.get_element_model_values(
+        device=device, region="silicon", name="mu_n_cvt"))
+    assert np.abs(lam).max() > 5e-3      # quantum potential active
+    assert mu.min() < 500.0              # surface degradation active
+    assert abs(contact_current(device, "drain")) > 0

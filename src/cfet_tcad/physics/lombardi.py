@@ -36,7 +36,14 @@ HCE_NAME = "HoleContinuityEquation"
 # transport-direction field for velocity saturation (edge-aligned)
 _EPAR = "((((Potential@en0 - Potential@en1)*EdgeInverseLength)^2 + 1e-4)^(0.5))"
 
-_VDIFF = "((Potential@en0 - Potential@en1)/V_t)"
+
+def _vdiff(lam: str | None = None, sign: str = "-") -> str:
+    """Bernoulli argument: classical potential, or the DG effective
+    potential (electrons psi - Lambda_n, holes psi + Lambda_p)."""
+    if lam is None:
+        return "((Potential@en0 - Potential@en1)/V_t)"
+    return (f"(((Potential@en0 {sign} {lam}@en0)"
+            f" - (Potential@en1 {sign} {lam}@en1))/V_t)")
 
 
 def _eperp(dimension: int) -> str:
@@ -66,11 +73,20 @@ def _element_derivatives(device: str, region: str, model: str, expr: str,
 
 def apply_lombardi_currents(device: str, region: str,
                             mat: SemiconductorParams,
-                            dimension: int = 2) -> None:
+                            dimension: int = 2,
+                            quantum_carriers: tuple = ()) -> None:
     """Replace the edge SG currents of ``region`` with element currents
     carrying the CVT mobility.  Call after the classical drift-diffusion
     system is assembled and solved (mobility model 'doping', so the
-    mu_*_lf edge models exist)."""
+    mu_*_lf edge models exist).
+
+    Carriers named in ``quantum_carriers`` drive their Bernoulli factors
+    with the DG effective potential (their Lambda solutions must exist);
+    call a second time with the carriers set to switch an already-wired
+    Lombardi system onto the quantum potentials — the continuity and
+    contact equations reference the currents by name, so replacing the
+    element models rewires everything in place.  The CVT mobility keeps
+    the electrostatic field as its driving force (standard practice)."""
     p = devsim.set_parameter
     p(device=device, region=region, name="b_ac_n", value=mat.b_ac_n)
     p(device=device, region=region, name="b_ac_p", value=mat.b_ac_p)
@@ -78,8 +94,12 @@ def apply_lombardi_currents(device: str, region: str,
     p(device=device, region=region, name="delta_sr_p", value=mat.delta_sr_p)
     p(device=device, region=region, name="vsat_n", value=mat.vsat_n)
     p(device=device, region=region, name="vsat_p", value=mat.vsat_p)
-    # classical limit until the homotopy ramps it up
-    devsim.set_parameter(device=device, name="cvt_scale", value=0.0)
+    # classical limit until the homotopy ramps it up; on a re-wire call
+    # (e.g. switching to quantum potentials) keep the converged value
+    try:
+        devsim.get_parameter(device=device, name="cvt_scale")
+    except devsim.error:
+        devsim.set_parameter(device=device, name="cvt_scale", value=0.0)
 
     devsim.element_from_edge_model(edge_model="ElectricField",
                                    device=device, region=region)
@@ -98,20 +118,26 @@ def apply_lombardi_currents(device: str, region: str,
         _element_derivatives(device, region, name, mu, dimension,
                              "Potential")
 
-    bern = f"B({_VDIFF})"
+    q_n = "Electrons" in quantum_carriers
+    q_p = "Holes" in quantum_carriers
+    vd_n = _vdiff("Lambda_n", "-") if q_n else _vdiff()
+    vd_p = _vdiff("Lambda_p", "+") if q_p else _vdiff()
+
     jn = (f"ElectronCharge*mu_n_cvt*EdgeInverseLength*V_t*"
-          f"kahan3(Electrons@en1*{bern}, Electrons@en1*{_VDIFF},"
-          f" -Electrons@en0*{bern})")
+          f"kahan3(Electrons@en1*B({vd_n}), Electrons@en1*{vd_n},"
+          f" -Electrons@en0*B({vd_n}))")
     CreateElementModel2d(device, region, "ElectronCurrentE", jn)
     _element_derivatives(device, region, "ElectronCurrentE", jn, dimension,
-                         "Potential", "Electrons")
+                         "Potential", "Electrons",
+                         *(("Lambda_n",) if q_n else ()))
 
     jp = (f"-ElectronCharge*mu_p_cvt*EdgeInverseLength*V_t*"
-          f"kahan3(Holes@en1*{bern}, -Holes@en0*{bern},"
-          f" -Holes@en0*{_VDIFF})")
+          f"kahan3(Holes@en1*B({vd_p}), -Holes@en0*B({vd_p}),"
+          f" -Holes@en0*{vd_p})")
     CreateElementModel2d(device, region, "HoleCurrentE", jp)
     _element_derivatives(device, region, "HoleCurrentE", jp, dimension,
-                         "Potential", "Holes")
+                         "Potential", "Holes",
+                         *(("Lambda_p",) if q_p else ()))
 
     devsim.equation(device=device, region=region, name=ECE_NAME,
                     variable_name="Electrons", time_node_model="NCharge",

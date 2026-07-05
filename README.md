@@ -47,6 +47,9 @@ cfet-tcad run configs/gaa_nfet_3d.yaml
 # density-gradient 量子修正版 nFET (对比经典版观察 Vt 偏移/体反型)
 cfet-tcad run configs/nsheet_nfet_2d_dg.yaml
 
+# "全物理" nFET: Lombardi CVT + density-gradient 同开 (Sentaurus 默认组合)
+cfet-tcad run configs/nsheet_nfet_2d_full.yaml
+
 # 完整 CFET 堆叠: nFET-on-pFET 共栅, 单次耦合求解同时输出 n/p 转移特性
 cfet-tcad run configs/cfet_2d.yaml
 
@@ -148,7 +151,14 @@ element 模型接入连续性/接触方程（element 与 edge 电流在同迁移
 到全强度。CVT 指纹在 2D 与 3D 上一致：线性区 Ion −24~28%（迁移率主导）、
 饱和区 −11~12%（速度饱和掩盖）、SS/DIBL 不变。注意 element 表达式必须
 用 `@en*` 访问器书写（`@n0` 与 `@en0` 取值相同但求导独立，详见
-physics/lombardi.py 模块注释）。暂不支持与 DG 组合。
+physics/lombardi.py 模块注释）。
+
+**全物理组合**：CVT 与 density-gradient 可同开（量子载流子的 element
+电流 Bernoulli 驱动势换为有效势 ψ∓Λ，CVT 迁移率保持静电场驱动）。
+装配顺序：经典 DD → CVT 同伦 → DG 方程 + element 电流量子化 → DG 同伦。
+四模型对照（同一 15nm nFET，线性区）：经典 Ion 11.6µA / CVT 8.3 / DG
+10.0 / 全物理 6.4µA —— 各单项效应在组合中保持原量级（Vt 偏移全部来自
+DG +18mV，Ion 退化近似乘性叠加），无病态串扰；2D/3D 均收敛。
 
 **量子修正**（`physics.quantum_model: density_gradient`，默认关闭）：
 Bohm 量子势 density-gradient 模型，输运载流子增加一个量子势解变量
@@ -198,8 +208,9 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
 - 参数扫描 / DOE（多进程并行，`cfet-tcad sweep`）✔
 - Lombardi (CVT) 垂直场迁移率（element 级装配，2D + 3D）✔
 - 异质沟道材料（SiGe30 pFET，按区材料架构）✔
-- **后续方向**：氧化层内 DG、element 级量子电流（解除 lombardi×DG
-  互斥）、多纳米片堆叠、Ge 组分连续可调的 SiGe 参数插值
+- element 级量子电流（CVT + DG 全物理组合）✔
+- **后续方向**：氧化层内 DG、多纳米片堆叠、Ge 组分连续可调的 SiGe
+  参数插值
 
 ## 开发注意事项
 

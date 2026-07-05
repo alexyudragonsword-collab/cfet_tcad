@@ -50,10 +50,6 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     oxide = MATERIALS[oxide_material]
 
     lombardi = mobility_model == "lombardi_vsat"
-    if lombardi and quantum_model != "none":
-        raise ValueError(
-            "lombardi_vsat and density_gradient cannot be combined yet "
-            "(the quantum currents are edge-based)")
     # Lombardi starts from a converged classical system with the
     # doping-dependent low-field mobility (its mu_*_lf edge models feed
     # the CVT Matthiessen combination)
@@ -142,8 +138,17 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
             create_density_gradient(device, region, material_of(region),
                                     gamma_n=dg_gamma_n, gamma_p=dg_gamma_p,
                                     carriers=carriers_of(region))
-            eq.apply_quantum_currents(device, region, *mobilities[region],
-                                      carriers=carriers_of(region))
+            if lombardi:
+                # rebuild the element currents on the DG effective
+                # potentials (replaces the models in place; equations
+                # reference them by name)
+                apply_lombardi_currents(device, region, material_of(region),
+                                        dimension=layout.dimension,
+                                        quantum_carriers=carriers_of(region))
+            else:
+                eq.apply_quantum_currents(device, region,
+                                          *mobilities[region],
+                                          carriers=carriers_of(region))
         for contact, region in ohmic_contacts.items():
             create_dg_contact(device, contact,
                               carriers=carriers_of(region))
