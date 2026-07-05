@@ -15,24 +15,69 @@ Inspect                cfet_tcad.extract (Vt/SS/DIBL/Ion/Ioff)
 
 import ctypes.util
 import os
+import sys
+from pathlib import Path
 
 __version__ = "0.5"
 __author__ = "Yu Rui"
 
+# BLAS/LAPACK DLL patterns DEVSIM can use, in preference order
+_WIN_BLAS_GLOBS = ("mkl_rt*.dll", "libopenblas*.dll")
+_UNIX_BLAS_NAMES = ("openblas", "lapack", "blas", "mkl_rt")
 
-def _ensure_devsim_math_libs() -> None:
-    """DEVSIM dlopens a BLAS/LAPACK at import time.  On systems where only
-    versioned shared objects are installed (e.g. libopenblas.so.0 from the
-    Debian/Ubuntu runtime package, without the -dev symlink), DEVSIM's default
-    search list fails.  Resolve a usable library and export DEVSIM_MATH_LIBS
-    before devsim is imported anywhere in this package."""
-    if "DEVSIM_MATH_LIBS" in os.environ:
-        return
-    for name in ("openblas", "lapack", "blas", "mkl_rt"):
+
+def _add_dll_dir(directory: Path) -> None:
+    """Make a directory visible to both Windows DLL loaders (DEVSIM loads
+    through plain LoadLibrary, which honors PATH but not
+    os.add_dll_directory alone)."""
+    os.add_dll_directory(str(directory))
+    os.environ["PATH"] = f"{directory}{os.pathsep}" + os.environ.get("PATH", "")
+
+
+def _find_math_library() -> str | None:
+    if getattr(sys, "frozen", False):
+        # PyInstaller onedir: DLLs live next to the exe or in _internal
+        exe_dir = Path(sys.executable).parent
+        for d in (exe_dir, exe_dir / "_internal"):
+            if not d.is_dir():
+                continue
+            patterns = (_WIN_BLAS_GLOBS if os.name == "nt"
+                        else ("libopenblas.so*", "liblapack.so*"))
+            for pattern in patterns:
+                hits = sorted(d.glob(pattern))
+                if hits:
+                    if os.name == "nt":
+                        _add_dll_dir(d)
+                    return str(hits[0])
+        return None
+    if os.name == "nt":
+        # the pip 'mkl' wheel drops its DLLs into <prefix>/Library/bin
+        libbin = Path(sys.prefix) / "Library" / "bin"
+        if libbin.is_dir():
+            for pattern in _WIN_BLAS_GLOBS:
+                hits = sorted(libbin.glob(pattern))
+                if hits:
+                    _add_dll_dir(libbin)
+                    return str(hits[0])
+        return ctypes.util.find_library("mkl_rt")
+    for name in _UNIX_BLAS_NAMES:
         found = ctypes.util.find_library(name)
         if found:
-            os.environ["DEVSIM_MATH_LIBS"] = found
-            return
+            return found
+    return None
+
+
+def _ensure_devsim_math_libs() -> None:
+    """DEVSIM dlopens a BLAS/LAPACK at import time; its default search list
+    misses versioned Linux sonames (libopenblas.so.0 without the -dev
+    symlink), the pip MKL location on Windows, and PyInstaller layouts.
+    Resolve a usable library and export DEVSIM_MATH_LIBS before devsim is
+    imported anywhere in this package."""
+    if "DEVSIM_MATH_LIBS" in os.environ:
+        return
+    library = _find_math_library()
+    if library:
+        os.environ["DEVSIM_MATH_LIBS"] = library
 
 
 _ensure_devsim_math_libs()

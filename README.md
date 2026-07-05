@@ -108,6 +108,16 @@ cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./r
 
 无显示器环境（CI/容器）可用 `QT_QPA_PLATFORM=offscreen` 运行与测试。
 
+### Windows 独立版（免装 Python）
+
+GitHub Actions 的 **Windows EXE** 工作流（手动触发或 `v*` 标签自动触发）
+用 PyInstaller 构建 onedir 独立包：Actions 运行页下载
+`cfet-tcad-windows-x64` 工件（打 tag 时同时附到 Release），解压后直接
+运行 `cfet-tcad-gui.exe`（工作台）或 `cfet-tcad.exe`（命令行，GUI 的
+每个仿真子进程也调用它）。包内含 DEVSIM+MKL、gmsh、Qt、VTK 全部运行时，
+Windows 11 x64 开箱即用。首次运行 SmartScreen 可能提示"未知发布者"
+（二进制未签名），选"仍要运行"即可。
+
 每次运行在 `output.directory` 下产生：
 
 - `idvg.csv` / `idvd.csv` — 全部偏压点的端电流

@@ -235,13 +235,14 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid parameters", str(exc))
             return
-        import sys
-
         from PySide6.QtCore import QProcess
+
+        from .run_queue import cli_command
+        program, prefix = cli_command()
         proc = QProcess(self)
-        proc.setProgram(sys.executable)
-        proc.setArguments(["-m", "cfet_tcad.workflow.cli", "structure",
-                           str(out / "config.yaml"), "-o", str(out)])
+        proc.setProgram(program)
+        proc.setArguments(prefix + ["structure", str(out / "config.yaml"),
+                                    "-o", str(out)])
         proc.setProcessChannelMode(QProcess.MergedChannels)
         proc.readyReadStandardOutput.connect(
             lambda: [self.log.append(f"[structure] {ln}") for ln in

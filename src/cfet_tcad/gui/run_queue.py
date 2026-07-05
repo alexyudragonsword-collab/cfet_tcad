@@ -8,6 +8,7 @@ on completion — the SWB node lighting up green.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,17 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 from ..workflow.config import apply_overrides
 from .experiment_table import Experiment, ExperimentModel, fom_summary
+
+
+def cli_command() -> tuple[str, list[str]]:
+    """(program, prefix args) that invoke the cfet-tcad CLI in a child
+    process.  Frozen (PyInstaller) builds have no Python interpreter —
+    ``sys.executable`` is the GUI exe itself — so they call the bundled
+    CLI executable sitting next to it instead of ``python -m``."""
+    if getattr(sys, "frozen", False):
+        name = "cfet-tcad.exe" if os.name == "nt" else "cfet-tcad"
+        return str(Path(sys.executable).with_name(name)), []
+    return sys.executable, ["-m", "cfet_tcad.workflow.cli"]
 
 
 class RunQueue(QObject):
@@ -63,10 +75,11 @@ class RunQueue(QObject):
             self.idle.emit()
 
     def _start(self, row: int, exp: Experiment) -> None:
+        program, prefix = cli_command()
         proc = QProcess(self)
-        proc.setProgram(sys.executable)
-        proc.setArguments(["-m", "cfet_tcad.workflow.cli", "run",
-                           str(exp.config_path), "-o", str(exp.out_dir)])
+        proc.setProgram(program)
+        proc.setArguments(prefix + ["run", str(exp.config_path),
+                                    "-o", str(exp.out_dir)])
         proc.setProcessChannelMode(QProcess.MergedChannels)
         proc.readyReadStandardOutput.connect(
             lambda r=row, p=proc: self._on_output(r, p))
