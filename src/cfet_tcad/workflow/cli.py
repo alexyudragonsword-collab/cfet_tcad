@@ -22,7 +22,28 @@ def main(argv=None) -> int:
     mesh_p.add_argument("config", type=Path)
     mesh_p.add_argument("-o", "--output", type=Path, default=None)
 
+    sweep_p = sub.add_parser(
+        "sweep", help="parametric sweep: one process per point")
+    sweep_p.add_argument("config", type=Path)
+    sweep_p.add_argument("-p", "--param", action="append", required=True,
+                         metavar="PATH=V1,V2,...",
+                         help="e.g. device.l_gate_nm=12,15,18 "
+                              "(repeat for a cartesian product)")
+    sweep_p.add_argument("-j", "--jobs", type=int, default=1)
+    sweep_p.add_argument("-o", "--output", type=Path, default=None)
+
     args = parser.parse_args(argv)
+
+    if args.command == "sweep":
+        from .config import load_config
+        from .sweep import parse_param_spec, run_sweep
+        params = dict(parse_param_spec(s) for s in args.param)
+        cfg = load_config(args.config)
+        out = Path(args.output or f"{cfg.output.directory}_sweep")
+        rows = run_sweep(args.config, params, out, jobs=args.jobs)
+        n_ok = sum(1 for r in rows if r.get("status") == "ok")
+        print(f"{n_ok}/{len(rows)} points completed; summary in {out}/")
+        return 0 if n_ok == len(rows) else 1
 
     from .config import load_config
     cfg = load_config(args.config)

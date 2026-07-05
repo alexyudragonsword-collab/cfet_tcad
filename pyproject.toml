@@ -29,3 +29,4 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: runs a full simulation pipeline (several seconds or more)"]

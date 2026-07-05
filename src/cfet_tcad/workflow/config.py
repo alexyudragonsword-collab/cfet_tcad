@@ -100,9 +100,7 @@ def _build(cls, data: dict, section: str):
         raise ValueError(f"invalid key in '{section}' section: {exc}") from exc
 
 
-def load_config(path: Path) -> RunConfig:
-    with open(path) as f:
-        raw = yaml.safe_load(f) or {}
+def build_config(raw: dict) -> RunConfig:
     return RunConfig(
         device=_build(DeviceParams, raw.get("device"), "device"),
         mesh=_build(MeshParams, raw.get("mesh"), "mesh"),
@@ -111,3 +109,29 @@ def load_config(path: Path) -> RunConfig:
         output=_build(OutputConfig, raw.get("output"), "output"),
         extract=_build(ExtractConfig, raw.get("extract"), "extract"),
     )
+
+
+def apply_overrides(raw: dict, overrides: dict) -> dict:
+    """Apply dotted-path overrides (e.g. {"device.l_gate_nm": 12}) to a raw
+    config dict.  Returns a deep-ish copy; the input is not modified."""
+    import copy
+
+    out = copy.deepcopy(raw)
+    for path, value in overrides.items():
+        keys = path.split(".")
+        node = out
+        for key in keys[:-1]:
+            node = node.setdefault(key, {})
+            if not isinstance(node, dict):
+                raise ValueError(f"cannot override through non-dict at "
+                                 f"{key!r} in {path!r}")
+        node[keys[-1]] = value
+    return out
+
+
+def load_config(path: Path, overrides: dict | None = None) -> RunConfig:
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+    if overrides:
+        raw = apply_overrides(raw, overrides)
+    return build_config(raw)
