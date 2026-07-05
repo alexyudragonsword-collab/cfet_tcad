@@ -50,10 +50,6 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     oxide = MATERIALS[oxide_material]
 
     lombardi = mobility_model == "lombardi_vsat"
-    if lombardi and layout.dimension != 2:
-        raise NotImplementedError(
-            "lombardi_vsat requires element assembly, implemented for 2D "
-            "regions only")
     if lombardi and quantum_model != "none":
         raise ValueError(
             "lombardi_vsat and density_gradient cannot be combined yet "
@@ -126,7 +122,8 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
 
     if lombardi:
         for region in silicon_regions:
-            apply_lombardi_currents(device, region, material_of(region))
+            apply_lombardi_currents(device, region, material_of(region),
+                                    dimension=layout.dimension)
         for contact in ohmic_contacts:
             rewire_lombardi_contact(
                 device, contact,
