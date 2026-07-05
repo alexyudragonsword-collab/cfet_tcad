@@ -148,3 +148,23 @@ def test_sample_line_mobility_profile(lombardi_vtk_dir):
 
     missing_d, missing_v = sample_line(meshes, "not_a_field", p1, p2)
     assert len(missing_d) == 0 and len(missing_v) == 0
+
+
+def test_slice_polygons_cross_section(lombardi_vtk_dir):
+    """Paper Fig. 9 is a cross-sectional field map, not a line profile:
+    a slice perpendicular to transport gives per-cell 2D polygons."""
+    from cfet_tcad.io.render3d import load_snapshot, slice_polygons
+
+    meshes = load_snapshot(lombardi_vtk_dir)
+    silicon = next(m for m in meshes if "mu_n_cvt" in m.array_names)
+    x_mid = (silicon.bounds[0] + silicon.bounds[1]) / 2
+    polygons, values = slice_polygons(silicon, "x", (x_mid, 0, 0),
+                                      field="mu_n_cvt")
+    assert len(polygons) == len(values) > 0
+    for poly in polygons:
+        assert poly.shape[1] == 2  # normal axis dropped
+    assert np.all(values > 0)
+
+    empty_polys, empty_vals = slice_polygons(
+        silicon, "x", (silicon.bounds[1] + 1, 0, 0), field="mu_n_cvt")
+    assert empty_polys == [] and len(empty_vals) == 0  # plane misses mesh

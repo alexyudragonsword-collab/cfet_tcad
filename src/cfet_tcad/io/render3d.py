@@ -174,6 +174,34 @@ def export_obj(vtk_dir: Path, path: Path, prefix: str | None = None,
     return path
 
 
+def slice_polygons(mesh: pv.DataSet, normal: str, origin,
+                   field: str | None = None):
+    """2D cross-section polygons (+ per-polygon values) of a cut plane,
+    for custom rendering (e.g. matplotlib) of a Sentaurus-Visual-style
+    cross-sectional field map - paper Fig. 9's "mobility distribution in
+    the middle of channel" is exactly this, a slice perpendicular to
+    transport, not a 1D line.
+
+    Returns ``(polygons, values)``: ``polygons`` is a list of Nx2 arrays
+    in the cut plane's local 2D coordinates (the ``normal`` axis
+    dropped); ``values`` is the per-polygon (cell) field array, or an
+    empty array if ``field`` is None or absent. Kept per-cell (no
+    interpolation to points) so the plot stays faithful to the actual
+    mesh resolution instead of implying smoothness the coarse mesh
+    doesn't have.
+    """
+    sl = mesh.slice(normal=normal, origin=origin)
+    axis = {"x": 0, "y": 1, "z": 2}[normal]
+    cols = [i for i in range(3) if i != axis]
+    if sl.n_points == 0:
+        return [], np.array([])
+    pts2d = sl.points[:, cols]
+    polygons = [pts2d[sl.get_cell(i).point_ids] for i in range(sl.n_cells)]
+    values = (np.asarray(sl.cell_data[field])
+             if field and field in sl.cell_data else np.array([]))
+    return polygons, values
+
+
 def field_choices(meshes: list[pv.DataSet]) -> list[str]:
     """Fields worth offering in a UI, present in any region.
 
