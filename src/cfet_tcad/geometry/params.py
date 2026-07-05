@@ -20,7 +20,8 @@ class DeviceParams:
 
     name: str = "nanosheet"
     polarity: str = "n"  # "n" (CFET top device) or "p" (CFET bottom device)
-    structure: str = "nanosheet_2d"  # "nanosheet_2d" | "gaa_3d" | "cfet_2d"
+    # "nanosheet_2d" | "gaa_3d" | "cfet_2d" | "cfet_3d"
+    structure: str = "nanosheet_2d"
 
     # geometry [nm]
     l_gate_nm: float = 15.0
@@ -49,10 +50,10 @@ class DeviceParams:
     def __post_init__(self):
         if self.polarity not in ("n", "p"):
             raise ValueError(f"polarity must be 'n' or 'p', got {self.polarity!r}")
-        if self.structure not in ("nanosheet_2d", "gaa_3d", "cfet_2d"):
+        valid = ("nanosheet_2d", "gaa_3d", "cfet_2d", "cfet_3d")
+        if self.structure not in valid:
             raise ValueError(
-                f"structure must be 'nanosheet_2d', 'gaa_3d' or 'cfet_2d', "
-                f"got {self.structure!r}")
+                f"structure must be one of {valid}, got {self.structure!r}")
         for attr in ("l_gate_nm", "t_si_nm", "t_ox_nm", "l_sd_nm",
                      "junction_lambda_nm", "sd_doping_cm3", "channel_doping_cm3",
                      "sheet_width_nm"):
