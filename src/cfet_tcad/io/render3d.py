@@ -112,6 +112,9 @@ def add_device(plotter: pv.Plotter, meshes: list[pv.DataSet],
                 m[name] = np.log10(np.maximum(np.asarray(m[field]), 1.0))
             else:
                 name = field
+            # mobility (mu_*_lf_node: point data; mu_*_cvt: DEVSIM's own
+            # per-element cell data, carried through as-is) shares this
+            # generic linear-scale path
             m.set_active_scalars(name)
             plotter.add_mesh(prep(m), scalars=name, cmap="viridis")
     for m in others:
@@ -172,10 +175,43 @@ def export_obj(vtk_dir: Path, path: Path, prefix: str | None = None,
 
 
 def field_choices(meshes: list[pv.DataSet]) -> list[str]:
-    """Node fields worth offering in a UI, present in any region."""
+    """Fields worth offering in a UI, present in any region.
+
+    Mobility fields depend on ``physics.mobility_model``: ``mu_*_lf_node``
+    (doping-dependent low-field mobility) exists for any model but
+    "const"; ``mu_*_cvt`` (the full vertical-field CVT mobility DEVSIM
+    assembles per mesh element under ``lombardi_vsat``, cf.
+    physics.lombardi) only exists for that model, and is the field that
+    shows the surface-orientation-dependent degradation a Sentaurus-style
+    "eMobility distribution" figure illustrates.
+    """
     interesting = ("NetDoping", "Potential", "Electrons", "Holes",
-                   "Lambda_n", "Lambda_p")
+                   "Lambda_n", "Lambda_p",
+                   "mu_n_lf_node", "mu_p_lf_node", "mu_n_cvt", "mu_p_cvt")
     present = set()
     for m in meshes:
         present.update(m.array_names)
     return ["Structure"] + [f for f in interesting if f in present]
+
+
+def sample_line(meshes: list[pv.DataSet], field: str, p1, p2,
+                resolution: int = 200):
+    """1D profile of ``field`` from ``p1`` to ``p2`` (device cm coordinates)
+    — the paper-Fig.9 style cut across a channel's confinement direction to
+    inspect vertical-field mobility degradation.  Cell data (the CVT
+    mobility) is averaged onto points first, a standard, order-independent
+    postprocessing step (unlike guessing DEVSIM's internal per-element
+    edge layout, which this deliberately avoids).
+
+    Returns ``(distance_cm, values)``; both empty if no supplied mesh
+    carries ``field``.
+    """
+    carriers = [m for m in meshes if field in m.array_names]
+    if not carriers:
+        return np.array([]), np.array([])
+    merged = pv.merge([m.cell_data_to_point_data() if field in m.cell_data
+                       else m for m in carriers])
+    line = merged.sample_over_line(p1, p2, resolution=resolution)
+    pts = np.asarray(line.points)
+    distance = np.linalg.norm(pts - np.asarray(p1), axis=1)
+    return distance, np.asarray(line[field])

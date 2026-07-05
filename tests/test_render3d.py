@@ -84,3 +84,67 @@ def test_offscreen_render_nonblank(structure_dir, tmp_path, field, clip):
     assert img.shape[:2] == (240, 320)
     # a real render has many distinct colors; a blank canvas has ~1
     assert len(np.unique(img.reshape(-1, img.shape[2]), axis=0)) > 10
+
+
+@pytest.fixture(scope="module")
+def lombardi_vtk_dir(tmp_path_factory):
+    """A tiny lombardi_vsat solve at a single high-Vg bias: the mobility
+    fields (mu_*_lf_node, mu_*_cvt) only exist post-solve, unlike the
+    structure-only fixture above."""
+    import cfet_tcad
+    cfet_tcad.reset()  # the structure_dir fixture left its device behind
+
+    out = tmp_path_factory.mktemp("lombardi")
+    cfg = out / "cfg.yaml"
+    cfg.write_text("""
+device: {name: lomb, polarity: n, gate_workfunction_ev: 4.5}
+mesh: {nx_sd: 6, nx_gate: 10, ny_si: 5, ny_ox: 2}
+physics: {mobility_model: lombardi_vsat}
+simulation: {type: idvg, vd: [0.7], vg_start: 0.6, vg_stop: 0.65, vg_step: 0.05}
+output: {directory: unused, vtk: true}
+""")
+    assert cli_main(["run", str(cfg), "-o", str(out)]) == 0
+    return out / "vtk"
+
+
+def test_field_choices_includes_mobility(lombardi_vtk_dir):
+    from cfet_tcad.io.render3d import field_choices, load_snapshot
+
+    choices = field_choices(load_snapshot(lombardi_vtk_dir))
+    # low-field (point data) and full CVT (DEVSIM's own cell data) both
+    # ride along automatically - no export code of our own involved
+    for f in ("mu_n_lf_node", "mu_n_cvt"):
+        assert f in choices, choices
+
+
+def test_add_device_colors_by_cell_data_mobility(lombardi_vtk_dir, tmp_path):
+    """mu_n_cvt only exists as VTK cell data; add_device's generic field
+    path must resolve it (pyvista searches point then cell data)."""
+    from cfet_tcad.io.render3d import render_structure
+
+    png = tmp_path / "mu.png"
+    render_structure(lombardi_vtk_dir, png=png, field="mu_n_cvt",
+                     window_size=(320, 240))
+    from PIL import Image
+    img = np.array(Image.open(png))
+    assert len(np.unique(img.reshape(-1, img.shape[2]), axis=0)) > 10
+
+
+def test_sample_line_mobility_profile(lombardi_vtk_dir):
+    """A 1D cut across the channel (paper Fig. 9 style): cell data is
+    averaged onto points first, so the profile is a plain smooth curve."""
+    from cfet_tcad.io.render3d import load_snapshot, sample_line
+
+    meshes = load_snapshot(lombardi_vtk_dir)
+    semis = [m for m in meshes if "mu_n_cvt" in m.array_names]
+    assert semis
+    bounds = semis[0].bounds  # (xmin,xmax,ymin,ymax,zmin,zmax)
+    x_mid = (bounds[0] + bounds[1]) / 2
+    p1 = (x_mid, bounds[2], 0.0)
+    p2 = (x_mid, bounds[3], 0.0)
+    distance, values = sample_line(meshes, "mu_n_cvt", p1, p2, resolution=50)
+    assert len(distance) == len(values) == 51
+    assert np.all(values > 0)  # a real mobility profile, not all-NaN/zero
+
+    missing_d, missing_v = sample_line(meshes, "not_a_field", p1, p2)
+    assert len(missing_d) == 0 and len(missing_v) == 0
