@@ -140,6 +140,17 @@ def test_about_dialog_and_version(qapp):
     assert re.search(r'^version = "0\.5"$', text, re.M)
 
 
+def test_app_icon_ships(qapp):
+    from pathlib import Path
+
+    from cfet_tcad.gui.icon import app_icon, icon_path
+
+    assert icon_path().exists()
+    assert not app_icon().isNull()
+    # the exe-resource icon used by both Windows packaging lanes
+    assert Path("packaging/app.ico").exists()
+
+
 def test_help_guide_renders_with_images(qapp):
     import re
 

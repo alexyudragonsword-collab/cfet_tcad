@@ -36,6 +36,7 @@ from .about_dialog import AboutDialog
 from .config_form import ConfigForm
 from .experiment_table import ExperimentModel
 from .help_view import HelpView
+from .icon import app_icon
 from .log_console import LogConsole
 from .results_view import ResultsView
 from .run_queue import RunQueue
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(
             f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
+        self.setWindowIcon(app_icon())
         self.resize(1280, 800)
         self.project_root = Path(project_root or Path.cwd())
         self.results_root = self.project_root / "results" / "gui"
@@ -91,6 +93,7 @@ class MainWindow(QMainWindow):
         # the user guide lives in its own window, reached from the Help
         # menu (top-left) — not duplicated as a center tab
         self.help = HelpView()
+        self.help.setWindowIcon(app_icon())
         self.help.setWindowTitle("User Guide / 用户指南")
         self.help.resize(920, 720)
         self.tabs = QTabWidget()

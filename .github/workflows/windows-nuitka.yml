@@ -59,6 +59,7 @@ jobs:
           --include-package=pyvistaqt
           --include-module=gmsh
           --windows-console-mode=attach
+          --windows-icon-from-ico=packaging/app.ico
           --output-filename=cfet-tcad.exe
           --output-dir=build
           --jobs=4

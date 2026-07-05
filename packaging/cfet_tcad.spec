@@ -49,6 +49,8 @@ a_cli = Analysis(["entry_cli.py"], **common)
 pyz_gui = PYZ(a_gui.pure)
 pyz_cli = PYZ(a_cli.pure)
 
+_ICON = str(Path(SPECPATH) / "app.ico")
+
 exe_gui = EXE(
     pyz_gui,
     a_gui.scripts,
@@ -57,6 +59,7 @@ exe_gui = EXE(
     name="cfet-tcad-gui",
     console=False,
     upx=False,
+    icon=_ICON,
 )
 exe_cli = EXE(
     pyz_cli,
@@ -66,6 +69,7 @@ exe_cli = EXE(
     name="cfet-tcad",
     console=True,
     upx=False,
+    icon=_ICON,
 )
 
 coll = COLLECT(
