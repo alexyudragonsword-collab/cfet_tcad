@@ -134,7 +134,7 @@ def _write_summary(out_dir: Path, names: list, rows: list[dict]) -> None:
         writer = csv.DictWriter(f, fieldnames=keys, restval="")
         writer.writeheader()
         writer.writerows(rows)
-    with open(out_dir / "sweep_summary.json", "w") as f:
+    with open(out_dir / "sweep_summary.json", "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2, sort_keys=True)
 
 

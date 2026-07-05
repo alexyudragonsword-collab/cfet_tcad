@@ -130,7 +130,7 @@ def apply_overrides(raw: dict, overrides: dict) -> dict:
 
 
 def load_config(path: Path, overrides: dict | None = None) -> RunConfig:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     if overrides:
         raw = apply_overrides(raw, overrides)

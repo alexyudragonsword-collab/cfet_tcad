@@ -29,7 +29,7 @@ from ..workflow.sweep import flatten_fom
 
 
 def _read_csv(path: Path) -> list[dict]:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return [{k: float(v) for k, v in row.items()}
                 for row in csv.DictReader(f)]
 
@@ -85,7 +85,7 @@ class ResultsView(QWidget):
         path = self._dir / "fom.json"
         if not path.exists():
             return
-        flat = flatten_fom(json.loads(path.read_text()))
+        flat = flatten_fom(json.loads(path.read_text(encoding="utf-8")))
         for key, value in sorted(flat.items()):
             row = self.fom_table.rowCount()
             self.fom_table.insertRow(row)

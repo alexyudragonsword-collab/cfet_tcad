@@ -57,6 +57,10 @@ class HelpView(QWidget):
     def set_language(self, language: str) -> None:
         path = guide_path(language)
         if path.exists():
-            self.browser.setSource(QUrl.fromLocalFile(str(path)))
+            # read explicitly as UTF-8 (Windows would otherwise guess a
+            # legacy codepage) and keep a base URL so img/ paths resolve
+            self.browser.document().setBaseUrl(
+                QUrl.fromLocalFile(str(path.parent) + "/"))
+            self.browser.setHtml(path.read_text(encoding="utf-8"))
         else:  # pragma: no cover - packaging error surface
             self.browser.setPlainText(f"user guide not found: {path}")

@@ -93,7 +93,7 @@ class ConfigForm(QWidget):
     # --- data flow ----------------------------------------------------------
 
     def load(self, path: Path) -> None:
-        raw = yaml.safe_load(Path(path).read_text()) or {}
+        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         cfg = build_config(raw)  # validates + fills defaults
         for (section, name), w in self._widgets.items():
             value = getattr(getattr(cfg, section), name)
@@ -116,5 +116,5 @@ class ConfigForm(QWidget):
         return raw
 
     def save(self, path: Path) -> None:
-        Path(path).write_text(yaml.safe_dump(self.to_raw(),
-                                             sort_keys=False))
+        Path(path).write_text(yaml.safe_dump(self.to_raw(), sort_keys=False),
+                              encoding="utf-8")

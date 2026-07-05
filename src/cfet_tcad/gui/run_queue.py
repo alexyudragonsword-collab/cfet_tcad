@@ -55,11 +55,13 @@ class RunQueue(QObject):
         output directory and register it as a queued experiment."""
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        raw = yaml.safe_load(Path(base_config).read_text()) or {}
+        raw = yaml.safe_load(
+            Path(base_config).read_text(encoding="utf-8")) or {}
         if overrides:
             raw = apply_overrides(raw, overrides)
         cfg = out_dir / "config.yaml"
-        cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+        cfg.write_text(yaml.safe_dump(raw, sort_keys=False),
+                       encoding="utf-8")
         return Experiment(name=name, config_path=cfg, out_dir=out_dir,
                           overrides=dict(overrides or {}))
 
@@ -110,7 +112,8 @@ class RunQueue(QObject):
         if exit_code == 0:
             fom_path = exp.out_dir / "fom.json"
             if fom_path.exists():
-                exp.fom = fom_summary(json.loads(fom_path.read_text()))
+                exp.fom = fom_summary(
+                    json.loads(fom_path.read_text(encoding="utf-8")))
         self.model.update_row(row)
         self.experiment_changed.emit(row)
         self.log_line.emit(f"[{exp.name}] {exp.status} (exit {exit_code})")

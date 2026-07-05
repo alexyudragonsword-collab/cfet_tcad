@@ -25,7 +25,7 @@ def write_iv_csv(path: Path, rows: list[dict]) -> Path:
 def write_json(path: Path, data: dict) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=True)
     return path
 

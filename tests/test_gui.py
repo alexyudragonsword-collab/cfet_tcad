@@ -136,7 +136,8 @@ def test_help_guide_renders_with_images(qapp):
         path = guide_path(language)
         assert path.exists(), language
         # every referenced image must ship with the package
-        for img in re.findall(r'src="(img/[^"]+)"', path.read_text()):
+        text = path.read_text(encoding="utf-8")
+        for img in re.findall(r'src="(img/[^"]+)"', text):
             assert (path.parent / img).exists(), img
 
     view = HelpView()
