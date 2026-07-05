@@ -58,6 +58,8 @@ jobs:
           --include-package-data=pyvista
           --include-package=pyvistaqt
           --include-module=gmsh
+          --python-flag=no_docstrings
+          --python-flag=no_asserts
           --windows-console-mode=attach
           --windows-icon-from-ico=packaging/app.ico
           --output-filename=cfet-tcad.exe
