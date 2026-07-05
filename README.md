@@ -166,6 +166,9 @@ DEVSIM+MKL、gmsh、Qt、VTK 全部运行时，Windows 11 x64 免装 Python：
   终端里有输出、双击不弹黑框）；启动更快，首次构建耗时更长
   （CI 有编译缓存）。
 
+解压后 exe 旁边的 `configs/` 目录内含全部示例设计（2D/3D 纳米片、
+CFET 堆叠、SiGe、量子修正等），GUI 双击启动即在左侧列出。
+
 首次运行 SmartScreen 可能提示"未知发布者"（二进制未签名），
 选"仍要运行"即可。
 

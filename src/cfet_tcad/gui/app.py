@@ -4,6 +4,20 @@ import sys
 from pathlib import Path
 
 
+def default_project_root(argv: list, frozen: bool, exe_dir: Path) -> Path:
+    """Project root for the config browser: an explicit argument wins;
+    otherwise the working directory - except in a frozen bundle launched
+    by double-click (cwd is arbitrary), where the install directory has
+    the shipped example configs sitting next to the exe."""
+    if len(argv) > 1:
+        return Path(argv[1])
+    cwd = Path.cwd()
+    if frozen and not (cwd / "configs").is_dir() \
+            and (exe_dir / "configs").is_dir():
+        return exe_dir
+    return cwd
+
+
 def main(argv=None) -> int:
     from PySide6.QtWidgets import QApplication
 
@@ -18,7 +32,8 @@ def main(argv=None) -> int:
             "YuRui.StackedCmosTcad")
 
     argv = list(sys.argv if argv is None else argv)
-    root = Path(argv[1]) if len(argv) > 1 else Path.cwd()
+    root = default_project_root(argv, getattr(sys, "frozen", False),
+                                Path(sys.executable).parent)
     app = QApplication(argv)
     app.setWindowIcon(app_icon())  # inherited by all windows
     window = MainWindow(project_root=root)

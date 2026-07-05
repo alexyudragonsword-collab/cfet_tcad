@@ -40,9 +40,14 @@ jobs:
       - name: Build standalone bundle
         run: pyinstaller packaging/cfet_tcad.spec --noconfirm
 
+      - name: Bundle example design configs (visible next to the exe)
+        run: |
+          cp -r configs dist/cfet-tcad/configs
+          test -f dist/cfet-tcad/configs/cfet_3d.yaml
+
       - name: Frozen smoke - CLI structure export (devsim+gmsh+MKL bundled)
         run: |
-          ./dist/cfet-tcad/cfet-tcad.exe structure configs/nsheet_nfet_2d.yaml -o smoke_out
+          ./dist/cfet-tcad/cfet-tcad.exe structure dist/cfet-tcad/configs/nsheet_nfet_2d.yaml -o smoke_out
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
 

@@ -87,9 +87,14 @@ jobs:
           assert any(n.startswith("gmsh") for n in copied), "gmsh dll missing"
           EOF
 
+      - name: Bundle example design configs (visible next to the exe)
+        run: |
+          cp -r configs build/entry_nuitka.dist/configs
+          test -f build/entry_nuitka.dist/configs/cfet_3d.yaml
+
       - name: Frozen smoke - CLI structure export (devsim+gmsh+MKL bundled)
         run: |
-          ./build/entry_nuitka.dist/cfet-tcad.exe structure configs/nsheet_nfet_2d.yaml -o smoke_out
+          ./build/entry_nuitka.dist/cfet-tcad.exe structure build/entry_nuitka.dist/configs/nsheet_nfet_2d.yaml -o smoke_out
           test -f smoke_out/vtk/structure.vtm
           echo "frozen CLI OK"
 

@@ -140,6 +140,26 @@ def test_about_dialog_and_version(qapp):
     assert re.search(r'^version = "0\.5"$', text, re.M)
 
 
+def test_default_project_root(tmp_path, monkeypatch):
+    from cfet_tcad.gui.app import default_project_root
+
+    exe_dir = tmp_path / "install"
+    (exe_dir / "configs").mkdir(parents=True)
+    cwd = tmp_path / "somewhere"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    # explicit argument always wins
+    assert default_project_root(["x", "/proj"], True, exe_dir) \
+        == __import__("pathlib").Path("/proj")
+    # frozen + no configs in cwd -> the install dir (shipped examples)
+    assert default_project_root(["x"], True, exe_dir) == exe_dir
+    # dev runs keep the working directory
+    assert default_project_root(["x"], False, exe_dir) == cwd
+    # a cwd that has its own configs/ wins even when frozen
+    (cwd / "configs").mkdir()
+    assert default_project_root(["x"], True, exe_dir) == cwd
+
+
 def test_sweep_dialog_imports_points_csv(qapp, tmp_path):
     from cfet_tcad.gui.main_window import SweepDialog
 
