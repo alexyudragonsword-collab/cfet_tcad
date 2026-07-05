@@ -11,12 +11,19 @@ on:
       - ".github/workflows/windows-exe.yml"
       - "packaging/**"
 
+concurrency:
+  group: winexe-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
+      # headless Windows has no OpenGL: the VTK Qt interactor would
+      # segfault, so the GUI runs with the 3D tab disabled during smokes
+      CFET_TCAD_NO_3D: "1"
     defaults:
       run:
         shell: bash

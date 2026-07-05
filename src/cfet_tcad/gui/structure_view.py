@@ -5,6 +5,7 @@ to an explanatory label otherwise so the GUI core has no hard dependency
 on VTK.
 """
 
+import os
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -25,6 +26,11 @@ try:
 except ImportError:  # pragma: no cover - exercised only without the extra
     HAVE_PYVISTA = False
 
+# VTK's Qt interactor needs a real OpenGL context; on headless Windows
+# (offscreen Qt, no OSMesa) creating it segfaults outright.  CI and other
+# GL-less environments set this to keep the rest of the GUI usable.
+NO_3D_ENV = "CFET_TCAD_NO_3D"
+
 
 class StructureView(QWidget):
     def __init__(self, parent=None):
@@ -32,10 +38,12 @@ class StructureView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        if not HAVE_PYVISTA:
-            layout.addWidget(QLabel(
-                "3D view requires the viz extra:\n"
-                "    pip install -e '.[viz]'   (pyvista + pyvistaqt)"))
+        if not HAVE_PYVISTA or os.environ.get(NO_3D_ENV):
+            reason = ("disabled by CFET_TCAD_NO_3D (no OpenGL context)"
+                      if HAVE_PYVISTA else
+                      "requires the viz extra:\n"
+                      "    pip install -e '.[viz]'   (pyvista + pyvistaqt)")
+            layout.addWidget(QLabel(f"3D view {reason}"))
             self.plotter = None
             return
 

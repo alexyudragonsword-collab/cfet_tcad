@@ -101,6 +101,14 @@ def test_main_window_constructs(qapp, tmp_path):
     win.close()
 
 
+def test_structure_view_respects_no3d_gate(qapp, monkeypatch):
+    from cfet_tcad.gui.structure_view import NO_3D_ENV, StructureView
+
+    monkeypatch.setenv(NO_3D_ENV, "1")
+    view = StructureView()
+    assert view.plotter is None  # degraded to a label, no VTK interactor
+
+
 def test_about_dialog_and_version(qapp):
     import cfet_tcad
     from cfet_tcad.gui.about_dialog import ABOUT_HTML, AboutDialog

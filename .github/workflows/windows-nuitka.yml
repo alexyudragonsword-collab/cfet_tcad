@@ -21,6 +21,9 @@ jobs:
     timeout-minutes: 120
     env:
       QT_QPA_PLATFORM: offscreen
+      # headless Windows has no OpenGL: the VTK Qt interactor would
+      # segfault, so the GUI runs with the 3D tab disabled during smokes
+      CFET_TCAD_NO_3D: "1"
       NUITKA_CACHE_DIR: ${{ github.workspace }}/.nuitka-cache
     defaults:
       run:
