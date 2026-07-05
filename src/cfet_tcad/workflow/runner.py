@@ -62,6 +62,8 @@ class Runner:
             temperature=phys.temperature,
             taun=phys.taun, taup=phys.taup,
             mobility_model=phys.mobility_model,
+            quantum_model=phys.quantum_model,
+            dg_gamma_n=phys.dg_gamma_n, dg_gamma_p=phys.dg_gamma_p,
             solver_args=self._solver,
         )
 

@@ -211,6 +211,35 @@ def _create_bernoulli(device: str, region: str) -> None:
                     "-Bern01:Potential@n0")
 
 
+_QUANTUM_BERNOULLI = {"Electrons": ("n", "Lambda_n", "-"),
+                      "Holes": ("p", "Lambda_p", "+")}
+
+
+def _create_quantum_bernoulli(device: str, region: str,
+                              carriers: tuple) -> None:
+    """Per-carrier Bernoulli models on the DG effective potentials
+    (electrons: Potential - Lambda_n; holes: Potential + Lambda_p)."""
+    for suffix, lam, sign in (_QUANTUM_BERNOULLI[c] for c in carriers):
+        v = f"vdiff_{suffix}"
+        b = f"Bern01_{suffix}"
+        CreateEdgeModel(device, region, v,
+                        f"((Potential@n0 {sign} {lam}@n0)"
+                        f" - (Potential@n1 {sign} {lam}@n1))/V_t")
+        CreateEdgeModel(device, region, f"{v}:Potential@n0", "V_t^(-1)")
+        CreateEdgeModel(device, region, f"{v}:Potential@n1",
+                        f"-{v}:Potential@n0")
+        CreateEdgeModel(device, region, f"{v}:{lam}@n0",
+                        f"{sign}V_t^(-1)")
+        CreateEdgeModel(device, region, f"{v}:{lam}@n1",
+                        f"-{v}:{lam}@n0")
+        CreateEdgeModel(device, region, b, f"B({v})")
+        for var in ("Potential", lam):
+            CreateEdgeModel(device, region, f"{b}:{var}@n0",
+                            f"dBdx({v}) * {v}:{var}@n0")
+            CreateEdgeModel(device, region, f"{b}:{var}@n1",
+                            f"-{b}:{var}@n0")
+
+
 def _create_srh(device: str, region: str) -> None:
     usrh = ("(Electrons*Holes - n_i^2)"
             "/(taup*(Electrons + n1) + taun*(Holes + p1))")
@@ -223,6 +252,50 @@ def _create_srh(device: str, region: str) -> None:
         CreateNodeModelDerivative(device, region, "USRH", usrh, var)
         CreateNodeModelDerivative(device, region, "ElectronGeneration", gn, var)
         CreateNodeModelDerivative(device, region, "HoleGeneration", gp, var)
+
+
+def _create_sg_currents(device: str, region: str,
+                        mu_n_expr: str, mu_p_expr: str,
+                        quantum_carriers: tuple = ()) -> None:
+    """Scharfetter-Gummel edge currents.  Carriers named in
+    ``quantum_carriers`` use the Bernoulli models of their DG effective
+    potential and gain the quantum potential in their derivative sets."""
+    q_n = "Electrons" in quantum_carriers
+    q_p = "Holes" in quantum_carriers
+    bn, vn = ("Bern01_n", "vdiff_n") if q_n else ("Bern01", "vdiff")
+    bp, vp = ("Bern01_p", "vdiff_p") if q_p else ("Bern01", "vdiff")
+    n_vars = ("Potential", "Electrons", "Holes") + (
+        ("Lambda_n",) if q_n else ())
+    p_vars = ("Potential", "Electrons", "Holes") + (
+        ("Lambda_p",) if q_p else ())
+
+    jn = (f"ElectronCharge*{mu_n_expr}*EdgeInverseLength*V_t*"
+          f"kahan3(Electrons@n1*{bn}, Electrons@n1*{vn},"
+          f" -Electrons@n0*{bn})")
+    CreateEdgeModel(device, region, "ElectronCurrent", jn)
+    for var in n_vars:
+        CreateEdgeModelDerivatives(device, region, "ElectronCurrent", jn, var)
+
+    jp = (f"-ElectronCharge*{mu_p_expr}*EdgeInverseLength*V_t*"
+          f"kahan3(Holes@n1*{bp}, -Holes@n0*{bp}, -Holes@n0*{vp})")
+    CreateEdgeModel(device, region, "HoleCurrent", jp)
+    for var in p_vars:
+        CreateEdgeModelDerivatives(device, region, "HoleCurrent", jp, var)
+
+
+def apply_quantum_currents(device: str, region: str,
+                           mu_n_expr: str, mu_p_expr: str,
+                           carriers: tuple = ("Electrons", "Holes")) -> None:
+    """Switch the SG currents of ``carriers`` onto their DG effective
+    potentials.
+
+    Call after create_density_gradient (Lambda solutions must exist).
+    The continuity and contact equations reference the currents by name,
+    so replacing the edge models rewires the whole system in place.
+    """
+    _create_quantum_bernoulli(device, region, carriers)
+    _create_sg_currents(device, region, mu_n_expr, mu_p_expr,
+                        quantum_carriers=carriers)
 
 
 def create_silicon_dd(device: str, region: str,
@@ -258,19 +331,7 @@ def create_silicon_dd(device: str, region: str,
 
     _create_bernoulli(device, region)
     _create_srh(device, region)
-
-    jn = (f"ElectronCharge*{mu_n_expr}*EdgeInverseLength*V_t*"
-          "kahan3(Electrons@n1*Bern01, Electrons@n1*vdiff,"
-          " -Electrons@n0*Bern01)")
-    CreateEdgeModel(device, region, "ElectronCurrent", jn)
-    for var in ("Potential", "Electrons", "Holes"):
-        CreateEdgeModelDerivatives(device, region, "ElectronCurrent", jn, var)
-
-    jp = (f"-ElectronCharge*{mu_p_expr}*EdgeInverseLength*V_t*"
-          "kahan3(Holes@n1*Bern01, -Holes@n0*Bern01, -Holes@n0*vdiff)")
-    CreateEdgeModel(device, region, "HoleCurrent", jp)
-    for var in ("Potential", "Electrons", "Holes"):
-        CreateEdgeModelDerivatives(device, region, "HoleCurrent", jp, var)
+    _create_sg_currents(device, region, mu_n_expr, mu_p_expr)
 
     ncharge = "-ElectronCharge * Electrons"
     CreateNodeModel(device, region, "NCharge", ncharge)

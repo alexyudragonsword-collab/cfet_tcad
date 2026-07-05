@@ -10,6 +10,9 @@ from ..geometry.params import DeviceParams, MeshParams
 from ..physics.mobility import MOBILITY_MODELS
 
 
+QUANTUM_MODELS = ("none", "density_gradient")
+
+
 @dataclass
 class PhysicsConfig:
     temperature: float = 300.0
@@ -17,11 +20,17 @@ class PhysicsConfig:
     taup: float = 1e-7
     mobility_model: str = "doping_vsat"
     oxide_material: str = "SiO2"
+    quantum_model: str = "none"
+    dg_gamma_n: float = 1.0   # scale factors on the DG coefficients
+    dg_gamma_p: float = 1.0
 
     def __post_init__(self):
         if self.mobility_model not in MOBILITY_MODELS:
             raise ValueError(
                 f"mobility_model must be one of {MOBILITY_MODELS}")
+        if self.quantum_model not in QUANTUM_MODELS:
+            raise ValueError(
+                f"quantum_model must be one of {QUANTUM_MODELS}")
 
 
 @dataclass

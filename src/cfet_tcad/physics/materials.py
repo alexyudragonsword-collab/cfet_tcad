@@ -9,6 +9,8 @@ from dataclasses import dataclass
 Q = 1.602176634e-19        # C
 K_B = 1.380649e-23         # J/K
 EPS_0 = 8.8541878128e-14   # F/cm
+HBAR = 1.054571817e-34     # J s
+M0 = 9.1093837015e-31      # kg
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,10 @@ class SemiconductorParams:
     vsat_p: float
     beta_n: float
     beta_p: float
+    # density-gradient effective masses (fraction of m0); calibration knobs
+    # for the quantum-confinement strength, scaled further by dg_gamma_*
+    m_dg_n: float = 0.3
+    m_dg_p: float = 0.4
 
     @property
     def midgap_workfunction_ev(self) -> float:

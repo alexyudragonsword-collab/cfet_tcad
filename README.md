@@ -44,6 +44,9 @@ cfet-tcad run configs/nsheet_nfet_idvd_2d.yaml
 # 完整 3D 环栅 (GAA) 单纳米片 Id-Vg (约数分钟)
 cfet-tcad run configs/gaa_nfet_3d.yaml
 
+# density-gradient 量子修正版 nFET (对比经典版观察 Vt 偏移/体反型)
+cfet-tcad run configs/nsheet_nfet_2d_dg.yaml
+
 # 只生成网格
 cfet-tcad mesh configs/nsheet_nfet_2d.yaml
 ```
@@ -82,8 +85,26 @@ Caughey-Thomas 掺杂依赖低场迁移率 + Caughey-Thomas 速度饱和。
 迁移率表达式内联进 SG 电流公式，利用 DEVSIM 的模型感知符号求导
 （`diff()`）获得含场依赖项的精确 Newton 雅可比。
 
-**求解**：非线性 Poisson（电中性初值）→ 提升为耦合 DD → 自适应偏压
-斜坡（失败步长减半）。默认开启 128 位扩展精度求解选项。
+**量子修正**（`physics.quantum_model: density_gradient`，默认关闭）：
+Bohm 量子势 density-gradient 模型，输运载流子增加一个量子势解变量
+Λ（nFET 修正电子、pFET 修正空穴，全耦合 Newton）：
+
+- `n = n_i·exp((ψ−Λ_n−φ_n)/V_t)`，DG 方程用对称化通量形式装配；
+- **各向异性**：量子势只作用于限域方向（y/z），输运方向（x）权重为 0
+  —— 与 Sentaurus 各向异性 eQuantumPotential 同一实践，避免虚假的
+  源漏势垒平滑推高 Ioff/SS；
+- Si/SiO2 界面用氧化层势垒 Robin 边界条件
+  `∂√n/∂n̂ = −√n/d_pen`（d_pen≈0.16nm），产生体反型/界面载流子排斥；
+- 收敛用 dg_scale 同伦阶梯（0→1，失败自适应二分）；
+- 强度可通过 `physics.dg_gamma_n/p` 标定。
+
+默认器件（t_si=5nm）上 DG 相对经典解：Vt +15~17mV、Ion −15%、
+Ioff −38%、SS/DIBL 基本不变，界面电子密度压低 ~60×、反型峰移到片中心
+（体反型）—— 方向与量级符合 DG 物理。已知局限：未在氧化层内求解 DG
+（穿透用 Robin BC 近似）。
+
+**求解**：非线性 Poisson（电中性初值）→ 提升为耦合 DD →（可选 DG 同伦）
+→ 自适应偏压斜坡（失败步长减半）。默认开启 128 位扩展精度求解选项。
 
 ## 目录结构
 
@@ -106,9 +127,8 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
 ## 路线图
 
 - **Phase 1**：2D 双栅纳米片截面全流程 ✔
-- **Phase 2**：3D 单纳米片 GAA ✔；待做：density-gradient 量子修正
-  （在 `physics/equations.py` 载流子模型上挂广义电位）、Lombardi
-  垂直场迁移率退化（需 element 级场重构）
+- **Phase 2**：3D 单纳米片 GAA ✔；density-gradient 量子修正 ✔；
+  待做：Lombardi 垂直场迁移率退化（需 element 级场重构）、氧化层内 DG
 - **Phase 3**：完整 CFET 堆叠（nFET-on-pFET，共栅，双器件同时求解）、
   寄生分析、参数扫描并行化
 
