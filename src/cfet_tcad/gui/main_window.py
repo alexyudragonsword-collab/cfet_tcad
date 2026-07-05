@@ -70,7 +70,8 @@ class SweepDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, project_root: Path | None = None):
         super().__init__()
-        self.setWindowTitle(f"cfet_tcad workbench v{cfet_tcad.__version__}")
+        self.setWindowTitle(
+            f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
         self.resize(1280, 800)
         self.project_root = Path(project_root or Path.cwd())
         self.results_root = self.project_root / "results" / "gui"
@@ -127,7 +128,8 @@ class MainWindow(QMainWindow):
         # temporary wrapper from menuBar().actions() is garbage collected
         self.help_menu = QMenu("&Help", self)
         self.help_menu.addAction("User Guide / 用户指南", self.show_help)
-        self.help_menu.addAction("About cfet_tcad", self.show_about)
+        self.help_menu.addAction(f"About {cfet_tcad.__app_name__}",
+                                 self.show_about)
         self.menuBar().addMenu(self.help_menu)
 
         # wiring

@@ -20,6 +20,7 @@ from pathlib import Path
 
 __version__ = "0.5"
 __author__ = "Yu Rui"
+__app_name__ = "STACKED CMOS TCAD"
 
 # BLAS/LAPACK DLL patterns DEVSIM can use, in preference order
 _WIN_BLAS_GLOBS = ("mkl_rt*.dll", "libopenblas*.dll")

@@ -1,4 +1,6 @@
-# cfet_tcad
+# STACKED CMOS TCAD
+
+（Python 包 / CLI 名：`cfet_tcad` / `cfet-tcad`）
 
 开源 CFET / 堆叠纳米片器件 TCAD 仿真系统，基于 **Python + DEVSIM + gmsh**，
 输出 VTK 供 **VisIt / ParaView** 可视化。对标 Synopsys Sentaurus 工具链。

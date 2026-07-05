@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
 import cfet_tcad
 
 ABOUT_HTML = f"""
-<h2>cfet_tcad Workbench</h2>
+<h2>{cfet_tcad.__app_name__}</h2>
 <p><b>Version {cfet_tcad.__version__}</b></p>
 <p>Open-source CFET / stacked-nanosheet TCAD simulation system,<br>
 patterned on the Synopsys Sentaurus tool chain.</p>
@@ -23,7 +23,7 @@ PySide6/Qt, and matplotlib.</p>
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("About cfet_tcad")
+        self.setWindowTitle(f"About {cfet_tcad.__app_name__}")
         label = QLabel(ABOUT_HTML)
         label.setTextFormat(Qt.RichText)
         label.setOpenExternalLinks(True)

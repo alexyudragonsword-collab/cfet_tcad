@@ -92,9 +92,12 @@ def test_run_queue_materializes_point_config(qapp, tmp_path):
 
 
 def test_main_window_constructs(qapp, tmp_path):
+    import cfet_tcad
     from cfet_tcad.gui.main_window import MainWindow
 
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
+    assert win.windowTitle() == (
+        f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
     assert win.config_list.count() == 0
     # Experiments/Parameters/Results/Structure (the guide is a window,
     # not a tab)
@@ -103,7 +106,8 @@ def test_main_window_constructs(qapp, tmp_path):
     menus = [a.text() for a in win.menuBar().actions()]
     assert menus == ["&Help"]
     actions = [a.text() for a in win.menuBar().actions()[0].menu().actions()]
-    assert actions == ["User Guide / 用户指南", "About cfet_tcad"]
+    assert actions == ["User Guide / 用户指南",
+                       f"About {cfet_tcad.__app_name__}"]
     win.show_help()
     assert win.help.isVisible() and win.help.isWindow()
     win.close()
@@ -126,7 +130,7 @@ def test_about_dialog_and_version(qapp):
     assert cfet_tcad.__author__ == "Yu Rui"
     assert "Yu Rui" in ABOUT_HTML and "0.5" in ABOUT_HTML
     dlg = AboutDialog()
-    assert dlg.windowTitle() == "About cfet_tcad"
+    assert dlg.windowTitle() == f"About {cfet_tcad.__app_name__}"
     dlg.close()
 
     # pyproject stays in sync with the package version
