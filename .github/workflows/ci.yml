@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: System libraries (DEVSIM BLAS, gmsh GL, Qt offscreen)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libopenblas0 libglu1-mesa \
+            libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      - name: Install package with all extras
+        run: pip install -e '.[dev,gui,viz]'
+
+      - name: Run test suite
+        run: pytest -q --durations=10
