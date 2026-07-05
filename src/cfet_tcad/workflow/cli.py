@@ -31,6 +31,10 @@ def main(argv=None) -> int:
                               "(repeat for a cartesian product)")
     sweep_p.add_argument("-j", "--jobs", type=int, default=1)
     sweep_p.add_argument("-o", "--output", type=Path, default=None)
+    sweep_p.add_argument("--zip", action="store_true", dest="zip_params",
+                         help="advance the -p value lists together as "
+                              "paired tuples instead of taking the "
+                              "cartesian product")
 
     args = parser.parse_args(argv)
 
@@ -40,7 +44,8 @@ def main(argv=None) -> int:
         params = dict(parse_param_spec(s) for s in args.param)
         cfg = load_config(args.config)
         out = Path(args.output or f"{cfg.output.directory}_sweep")
-        rows = run_sweep(args.config, params, out, jobs=args.jobs)
+        rows = run_sweep(args.config, params, out, jobs=args.jobs,
+                         zip_params=args.zip_params)
         n_ok = sum(1 for r in rows if r.get("status") == "ok")
         print(f"{n_ok}/{len(rows)} points completed; summary in {out}/")
         return 0 if n_ok == len(rows) else 1

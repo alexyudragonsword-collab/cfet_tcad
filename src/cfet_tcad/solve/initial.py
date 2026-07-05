@@ -7,7 +7,7 @@ from ..geometry.params import DeviceParams
 from ..physics import equations as eq
 from ..physics.doping import create_doping
 from ..physics.lombardi import apply_lombardi_currents, rewire_lombardi_contact
-from ..physics.materials import MATERIALS
+from ..physics.materials import MATERIALS, get_material
 from ..physics.mobility import create_mobility
 from ..physics.quantum import create_density_gradient, create_dg_contact
 
@@ -68,12 +68,7 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
     def material_of(region: str):
         key = layout.semiconductor_materials.get(region,
                                                  params.channel_material)
-        try:
-            return MATERIALS[key]
-        except KeyError:
-            raise ValueError(
-                f"unknown semiconductor material {key!r} for region "
-                f"{region!r}; available: {sorted(MATERIALS)}") from None
+        return get_material(key)
 
     # potential-only system
     for region in silicon_regions:
@@ -95,8 +90,8 @@ def setup_equilibrium(device: str, layout: MeshLayout, params: DeviceParams,
         # the midgap workfunction reference belongs to the gated sheet's
         # semiconductor (matters for heteromaterial stacks)
         gated = layout.gate_semiconductors.get(contact)
-        semi = material_of(gated) if gated else MATERIALS[
-            params.channel_material]
+        semi = (material_of(gated) if gated
+                else get_material(params.channel_material))
         eq.create_gate_contact(device, region, contact, wf, semi)
     for interface in layout.interfaces:
         eq.create_semiconductor_oxide_interface(device, interface)

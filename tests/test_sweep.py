@@ -39,6 +39,17 @@ def test_overrides_reach_validated_config(tmp_path):
         load_config(p, overrides={"device.polarity": "x"})
 
 
+def test_zip_params_pairing(tmp_path):
+    """--zip pairs the value lists instead of taking the product; unequal
+    lengths are rejected before any simulation starts."""
+    from cfet_tcad.workflow.sweep import run_sweep
+
+    with pytest.raises(ValueError, match="equally long"):
+        run_sweep(tmp_path / "unused.yaml",
+                  {"a.b": [1, 2, 3], "c.d": [4, 5]},
+                  tmp_path / "out", zip_params=True)
+
+
 def test_flatten_fom():
     fom = {"Vd = +0.70 V": {"ss_mv_per_dec": 74.0}, "dibl_mv_per_v": 90.0}
     flat = flatten_fom(fom)

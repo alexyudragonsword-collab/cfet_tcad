@@ -68,20 +68,42 @@ SILICON = SemiconductorParams(
     vsat_n=1.07e7, vsat_p=8.37e6, beta_n=2.0, beta_p=1.0,
 )
 
-# Compressively strained Si0.7Ge0.3 (typical CFET pFET channel).
-# Bandgap narrowed ~0.14 eV (mostly a valence band offset), intrinsic
-# density up accordingly, and the strain-enhanced hole mobility is the
-# reason industry uses it: it rebalances pFET drive against the nFET.
-SIGE30 = SemiconductorParams(
-    name="SiGe30",
-    eps_r=12.2,
-    n_i=1.3e11,
-    affinity_ev=4.05,
-    eg_ev=0.98,
-    mu_max_n=1000.0, mu_min_n=60.0, nref_n=9.20e16, alpha_n=0.711,
-    mu_max_p=900.0, mu_min_p=60.0, nref_p=2.23e17, alpha_p=0.719,
-    vsat_n=1.0e7, vsat_p=8.4e6, beta_n=2.0, beta_p=1.0,
-)
+import math
+import re
+
+
+def sige(x: float) -> SemiconductorParams:
+    """Compressively strained Si(1-x)Ge(x) on Si, linear interpolation
+    anchored so sige(0) matches Silicon and sige(0.30) the classic SiGe30
+    values.  The bandgap narrows ~0.14 eV per 30% Ge (mostly a valence
+    band offset) and the strain-enhanced hole mobility is the reason
+    industry uses it: it rebalances pFET drive against the nFET.
+    Saturation velocity and the CVT/DG parameters stay at their Si values
+    (calibration knobs)."""
+    if not 0.0 <= x <= 0.5:
+        raise ValueError(
+            f"Ge fraction {x} outside the strained-on-Si range [0, 0.5]")
+    eg = SILICON.eg_ev - 0.467 * x
+    vt300 = K_B * 300.0 / Q
+    n_i = SILICON.n_i * math.exp((SILICON.eg_ev - eg) / (2.0 * vt300))
+    return SemiconductorParams(
+        name=f"SiGe{round(x * 100)}",
+        eps_r=SILICON.eps_r + 1.67 * x,
+        n_i=n_i,
+        affinity_ev=SILICON.affinity_ev,
+        eg_ev=eg,
+        mu_max_n=SILICON.mu_max_n - 1380.0 * x,
+        mu_min_n=SILICON.mu_min_n - 28.3 * x,
+        nref_n=SILICON.nref_n, alpha_n=SILICON.alpha_n,
+        mu_max_p=SILICON.mu_max_p + 1432.0 * x,
+        mu_min_p=SILICON.mu_min_p + 50.3 * x,
+        nref_p=SILICON.nref_p, alpha_p=SILICON.alpha_p,
+        vsat_n=1.0e7, vsat_p=8.4e6,
+        beta_n=SILICON.beta_n, beta_p=SILICON.beta_p,
+    )
+
+
+SIGE30 = sige(0.30)
 
 SIO2 = InsulatorParams(name="SiO2", eps_r=3.9)
 HFO2 = InsulatorParams(name="HfO2", eps_r=22.0)
@@ -92,6 +114,21 @@ MATERIALS = {
     "SiO2": SIO2,
     "HfO2": HFO2,
 }
+
+_SIGE_KEY = re.compile(r"^SiGe(\d{1,2})$")
+
+
+def get_material(key: str):
+    """Resolve a material key: exact MATERIALS entry, or a dynamic
+    'SiGeNN' composition (NN = Ge percent, e.g. SiGe15 -> x=0.15)."""
+    if key in MATERIALS:
+        return MATERIALS[key]
+    m = _SIGE_KEY.match(key)
+    if m:
+        return sige(int(m.group(1)) / 100.0)
+    raise ValueError(
+        f"unknown material {key!r}; available: {sorted(MATERIALS)} "
+        f"or dynamic 'SiGeNN' (NN = Ge percent, 0-50)")
 
 
 def thermal_voltage(temperature: float) -> float:

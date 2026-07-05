@@ -18,6 +18,31 @@ def test_sige_material_entry():
     assert SIGE30.mu_max_p > SILICON.mu_max_p  # strain-enhanced holes
 
 
+def test_sige_factory_interpolation():
+    from cfet_tcad.physics.materials import get_material, sige
+
+    # anchors: x=0 reproduces Silicon, x=0.30 the SiGe30 entry
+    s0 = sige(0.0)
+    for attr in ("eg_ev", "n_i", "eps_r", "mu_max_p", "mu_min_p",
+                 "mu_max_n", "mu_min_n"):
+        assert getattr(s0, attr) == pytest.approx(getattr(SILICON, attr),
+                                                  rel=1e-9)
+    assert sige(0.30).eg_ev == pytest.approx(SIGE30.eg_ev)
+    assert sige(0.30).mu_max_p == pytest.approx(SIGE30.mu_max_p)
+
+    # monotone composition dependence
+    assert sige(0.45).mu_max_p > sige(0.15).mu_max_p
+    assert sige(0.45).eg_ev < sige(0.15).eg_ev
+
+    # dynamic key resolution
+    assert get_material("SiGe15").eg_ev == pytest.approx(sige(0.15).eg_ev)
+    assert get_material("Silicon") is SILICON
+    with pytest.raises(ValueError, match="unknown material"):
+        get_material("Diamond")
+    with pytest.raises(ValueError, match="Ge fraction"):
+        get_material("SiGe75")  # beyond the strained-on-Si range
+
+
 def test_layout_carries_per_sheet_materials(tmp_path):
     params = DeviceParams(name="mat_t", structure="cfet_2d",
                           channel_material_p="SiGe30")

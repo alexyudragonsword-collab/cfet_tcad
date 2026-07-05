@@ -78,14 +78,26 @@ def _run_point(args) -> dict:
 
 
 def run_sweep(base_config: Path, params: dict, out_dir: Path,
-              jobs: int = 1) -> list[dict]:
-    """Run the cartesian product of ``params`` (path -> value list)."""
+              jobs: int = 1, zip_params: bool = False) -> list[dict]:
+    """Run a parameter grid: the cartesian product of ``params``
+    (path -> value list), or — with ``zip_params`` — the value lists
+    advanced together as paired tuples (all lists must be equally long;
+    used for coupled knobs such as a Ge-fraction sweep that must retune
+    the gate workfunction at each composition to hold Vt)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     names = list(params)
-    points = [dict(zip(names, combo))
-              for combo in itertools.product(*(params[n] for n in names))]
+    if zip_params:
+        lengths = {n: len(params[n]) for n in names}
+        if len(set(lengths.values())) > 1:
+            raise ValueError(
+                f"--zip requires equally long value lists, got {lengths}")
+        points = [dict(zip(names, combo))
+                  for combo in zip(*(params[n] for n in names))]
+    else:
+        points = [dict(zip(names, combo))
+                  for combo in itertools.product(*(params[n] for n in names))]
     tasks = []
     for i, overrides in enumerate(points):
         tag = "_".join(f"{p.split('.')[-1]}{v}" for p, v in overrides.items())
@@ -103,9 +115,16 @@ def run_sweep(base_config: Path, params: dict, out_dir: Path,
                 rows.append(pool.map(_run_point, [t])[0])
 
     _write_summary(out_dir, names, rows)
-    if len(names) == 1 and all(isinstance(v, (int, float))
-                               for v in params[names[0]]):
-        _plot_trends(out_dir, names[0], rows)
+    # trend plot: 1D numeric sweeps, or zipped sweeps keyed on the first
+    # numeric parameter axis
+    axis = None
+    if len(names) == 1 or zip_params:
+        for n in names:
+            if all(isinstance(v, (int, float)) for v in params[n]):
+                axis = n
+                break
+    if axis:
+        _plot_trends(out_dir, axis, rows)
     return rows
 
 
