@@ -102,18 +102,24 @@ def test_main_window_constructs(qapp, tmp_path):
 
 
 def test_help_guide_renders_with_images(qapp):
-    from cfet_tcad.gui.help_view import HelpView, guide_path
-
-    path = guide_path()
-    assert path.exists()
-    # every referenced image must ship with the package
     import re
-    for img in re.findall(r'src="(img/[^"]+)"', path.read_text()):
-        assert (path.parent / img).exists(), img
+
+    from cfet_tcad.gui.help_view import GUIDES, HelpView, guide_path
+
+    for language in GUIDES:
+        path = guide_path(language)
+        assert path.exists(), language
+        # every referenced image must ship with the package
+        for img in re.findall(r'src="(img/[^"]+)"', path.read_text()):
+            assert (path.parent / img).exists(), img
+
     view = HelpView()
+    view.set_language("English")
     text = view.browser.toPlainText()
-    assert "User Guide" in text
-    assert "Sweeps" in text and "Physics models" in text
+    assert "User Guide" in text and "Physics models" in text
+    view.set_language("中文")
+    text = view.browser.toPlainText()
+    assert "用户指南" in text and "物理模型" in text
 
 
 def test_results_view_loads_fom(qapp, tmp_path):

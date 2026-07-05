@@ -1,0 +1,204 @@
+<h1>cfet_tcad 工作台 &mdash; 用户指南</h1>
+
+<p><i>基于 Python、DEVSIM（漂移扩散求解器）与 gmsh（参数化网格）构建的
+开源 CFET / 堆叠纳米片 TCAD 系统，桌面工作台交互范式对标 Synopsys
+Sentaurus。</i></p>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Sentaurus 组件</th><th>cfet_tcad 对应</th></tr>
+<tr><td>Structure Editor (SDE)</td><td>参数化几何构建器 + <b>Structure 3D</b> 页</td></tr>
+<tr><td>Sentaurus Device (SDevice)</td><td>DEVSIM 漂移扩散引擎，含 CVT 迁移率与 density-gradient 量子修正</td></tr>
+<tr><td>Mixed-mode 混合仿真</td><td>反相器 VTC 实验（器件/电路耦合 Newton）</td></tr>
+<tr><td>Sentaurus Visual / Inspect</td><td><b>Results</b> 页（曲线 + 参数提取）、<b>Structure 3D</b> 页（VTK 渲染）</td></tr>
+<tr><td>Workbench (SWB)</td><td><b>Experiments</b> 实验表格、并行扫描 / DOE</td></tr>
+</table>
+
+<hr>
+<h2>1. 安装</h2>
+
+<pre>
+# 系统库 (Debian/Ubuntu)
+sudo apt-get install libopenblas0 libglu1-mesa
+
+pip install -e '.[gui,viz]'     # GUI (PySide6) + 3D 渲染 (PyVista)
+cfet-tcad-gui                   # 在项目根目录启动
+</pre>
+
+<p>包在导入时自动为 DEVSIM 定位 OpenBLAS，无需设置任何环境变量。安装后
+可运行一次 <code>pytest</code>（约 3 分钟）确认环境正常。</p>
+
+<hr>
+<h2>2. 五分钟上手</h2>
+
+<p><b>工作流：</b>左侧选择配置 &rarr; 在 <b>Parameters</b> 页查看/编辑
+&rarr; 点击 <b>Run</b> &rarr; 在 <b>Experiments</b> 表格中看行变绿 &rarr;
+双击该行打开 <b>Results</b> 与 <b>Structure&nbsp;3D</b>。</p>
+
+<h3>2.1 Experiments 实验表格</h3>
+
+<p>每行一次仿真。状态色块沿用 Sentaurus Workbench 约定 &mdash;
+<b>灰</b>排队、<b>黄</b>运行中、<b>绿</b>完成、<b>红</b>失败 &mdash;
+V<sub>t</sub>、SS、I<sub>on</sub>、I<sub>off</sub>、DIBL 各列在运行结束后
+自动从提取结果回填。</p>
+
+<p><img src="img/tab_experiments.png" width="820"></p>
+
+<h3>2.2 Parameters 参数编辑</h3>
+
+<p>表单由配置模式自动生成并按节分组。枚举字段（结构、迁移率模型、量子
+模型、材料）为下拉框；每次保存都经过完整校验，笔误在求解器启动前就会被
+拦下。<b>Run</b> 始终使用表单的当前状态，可以边改边跑而无需手动改
+文件。</p>
+
+<p><img src="img/tab_parameters.png" width="820"></p>
+
+<h3>2.3 Results 结果查看</h3>
+
+<p>从运行目录的 CSV 交互重绘曲线（缩放/平移工具栏、log/linear 切换），
+右侧为展平的参数提取表。四种实验类型均可正确呈现：转移特性
+(Id&ndash;Vg)、输出特性 (Id&ndash;Vd)、CFET 共栅双管、反相器 VTC。</p>
+
+<p><img src="img/tab_results.png" width="820"></p>
+
+<h3>2.4 Structure 3D 三维结构</h3>
+
+<p>器件的真 VTK 渲染。工具栏 <b>Structure</b> 按钮对当前配置做秒级预览
+（建网格 + 掺杂、不求解 &mdash; 即 SDE 的看结构工作流）；双击已完成的
+实验行则加载其偏压点快照。下拉框切换快照（偏压点）与着色字段：
+<code>Structure</code>（材料）、<code>NetDoping</code>（对称对数）、
+<code>Potential</code>、<code>Electrons</code>/<code>Holes</code>（对数）、
+<code>Lambda_n/p</code>（量子势）。勾选 <b>clip open</b> 沿中面剖开器件
+露出沟道。</p>
+
+<p><img src="img/tab_structure.png" width="820"></p>
+
+<p>渲染示例 &mdash; 3D CFET 堆叠按净掺杂着色（红 = pFET 受主源漏、蓝 =
+nFET 施主源漏、半透明栅氧化壳），以及环栅纳米片 ON 态的电位场：</p>
+
+<p><img src="img/cfet3d_doping.png" width="820"></p>
+<p><img src="img/gaa_potential.png" width="820"></p>
+
+<hr>
+<h2>3. 参数扫描（DOE 实验设计）</h2>
+
+<p><b>Sweep&hellip;</b> 打开 DOE 对话框。每行一个参数，格式
+<code>路径=v1,v2,&hellip;</code>；多行默认取笛卡尔积，勾选 <b>zip</b>
+则各值列表成组同步推进。扫描点展开为表格中的独立行，由限并发进程池
+执行 &mdash; 一行行依次变绿：</p>
+
+<p><img src="img/sweep_midflight.png" width="820"></p>
+
+<pre>
+device.l_gate_nm=12,15,18,21                    # 栅长缩放研究
+
+# zip 成组示例: SiGe 组分扫描, 每个组分同步重调栅金属保持等 Vt
+device.channel_material_p=Silicon,SiGe15,SiGe30,SiGe45
+device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
+</pre>
+
+<hr>
+<h2>4. 器件结构</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th><code>device.structure</code></th><th>说明</th></tr>
+<tr><td><code>nanosheet_2d</code></td><td>2D 双栅沟道纵截面 &mdash; GAA 纳米片的标准 2D 近似。最快，适合方法学验证与批量扫描。</td></tr>
+<tr><td><code>gaa_3d</code></td><td>完整 3D 环栅单纳米片：硅条被氧化壳四面包裹，单一环栅接触。</td></tr>
+<tr><td><code>cfet_2d</code></td><td>CFET 堆叠：nFET 片叠在 pFET 片之上，四个栅接触共栅（每片可用不同栅金属），两管在同一耦合 Newton 系统中求解。</td></tr>
+<tr><td><code>cfet_3d</code></td><td>两个堆叠的 3D 环栅纳米片共栅 &mdash; 完整形态的 CFET。</td></tr>
+</table>
+
+<p>常用几何旋钮（单位 nm）：<code>l_gate_nm</code>、<code>t_si_nm</code>、
+<code>t_ox_nm</code>、<code>l_sd_nm</code>、<code>sheet_width_nm</code>、
+<code>t_gap_nm</code>（CFET 片间栅金属厚度）。掺杂：
+<code>sd_doping_cm3</code>、<code>channel_doping_cm3</code>、
+<code>junction_lambda_nm</code>（高斯结尾长度）。V<sub>t</sub> 由栅金属
+设定：单管用 <code>gate_workfunction_ev</code>，CFET 用
+<code>gate_workfunction_n_ev</code>/<code>_p_ev</code>。</p>
+
+<hr>
+<h2>5. 物理模型</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>设置项</th><th>选项</th><th>说明</th></tr>
+<tr><td><code>physics.mobility_model</code></td>
+    <td><code>const</code>、<code>doping</code>、<code>doping_vsat</code>、
+        <code>lombardi_vsat</code></td>
+    <td><code>doping_vsat</code>：Caughey&ndash;Thomas 掺杂依赖 + 速度
+        饱和。<code>lombardi_vsat</code> 增加 CVT 垂直场表面散射
+        （element 级装配，2D/3D 均支持）&mdash; 默认器件上线性区
+        I<sub>on</sub> 约降 25%。</td></tr>
+<tr><td><code>physics.quantum_model</code></td>
+    <td><code>none</code>、<code>density_gradient</code></td>
+    <td>输运载流子的 Bohm 量子势，含氧化层势垒 Robin 界面条件；产生
+        体反型与 V<sub>t</sub> 正移（t<sub>si</sub>=5&nbsp;nm 时约
+        +15&ndash;20&nbsp;mV）。强度经 <code>dg_gamma_n/p</code>
+        标定。</td></tr>
+<tr><td>组合</td><td><code>lombardi_vsat</code> +
+        <code>density_gradient</code></td>
+    <td>Sentaurus 仿真先进节点器件的默认"全物理"组合；两种效应近似
+        乘性叠加、无病态串扰。</td></tr>
+<tr><td><code>device.channel_material</code><br>（CFET 用 <code>_n/_p</code>）</td>
+    <td><code>Silicon</code>、<code>SiGeNN</code></td>
+    <td><code>SiGeNN</code> = 应变 Si<sub>1-x</sub>Ge<sub>x</sub>，NN 为
+        Ge 百分比（0&ndash;50），参数随组分连续插值。改组分时需同步重调
+        pFET 栅金属（禁带变化移动能带参考）。</td></tr>
+</table>
+
+<p>默认 15&nbsp;nm nFET 上经典 vs density-gradient 对比 &mdash; 转移特性
+曲线与沟道中部载流子分布（体反型）：</p>
+
+<p><img src="img/dg_comparison.png" width="820"></p>
+
+<hr>
+<h2>6. 实验类型</h2>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th><code>simulation.type</code></th><th>功能</th><th>关键设置</th></tr>
+<tr><td><code>idvg</code></td><td>对 <code>vd</code> 中每个漏压扫栅；提取 V<sub>t</sub>（恒流法与最大 g<sub>m</sub> 法）、SS、I<sub>on</sub>/I<sub>off</sub>，给两个 V<sub>d</sub> 时输出 DIBL。</td><td><code>vd</code>、<code>vg_start/stop/step</code></td></tr>
+<tr><td><code>idvd</code></td><td>对 <code>vg</code> 中每个栅压扫漏（输出特性）。</td><td><code>vg</code>、<code>vd_start/stop/step</code></td></tr>
+<tr><td><code>cfet_idvg</code></td><td>CFET 共栅扫描（CMOS 对偏置）；一次耦合求解同时产出 n/p 两条转移曲线与双份提取。</td><td><code>vdd</code>、<code>vg_*</code></td></tr>
+<tr><td><code>cfet_vtc</code></td><td>反相器电压传输特性：V<sub>out</sub> 为浮空电路节点自洽求解（器件/电路混合）。提取 V<sub>M</sub>、增益、噪声容限。</td><td><code>vdd</code>、<code>vg_*</code></td></tr>
+</table>
+
+<p><img src="img/vtc_curves.png" width="820"></p>
+
+<hr>
+<h2>7. 命令行</h2>
+
+<pre>
+cfet-tcad run &lt;config.yaml&gt; [-o outdir]      # 完整流水线
+cfet-tcad sweep &lt;config&gt; -p 路径=V1,V2 [-p ...] [--zip] [-j N]
+cfet-tcad structure &lt;config&gt; [-o dir] [--png img.png]   # 免求解结构预览
+cfet-tcad mesh &lt;config&gt;                      # 仅生成 gmsh 网格
+</pre>
+
+<p>每次运行在输出目录产生：<code>idvg.csv</code> /
+<code>idvd.csv</code> / <code>vtc.csv</code>（全部偏压点）、
+<code>*.png</code>（曲线图）、<code>fom.json</code>（提取的器件参数）、
+<code>vtk/</code>（场分布快照 &mdash; 也可用 VisIt/ParaView 通过
+<code>.pvd</code>/<code>.visit</code> 索引打开，扫描偏压即 timestep）。</p>
+
+<hr>
+<h2>8. 技巧与故障排查</h2>
+
+<ul>
+<li><b>典型耗时</b> &mdash; 2D Id&ndash;Vg 约 1&ndash;2 分钟；3D 数分钟；
+<code>lombardi_vsat</code> 或 <code>density_gradient</code> 增加约
+30&ndash;50%。结构预览秒级。</li>
+<li><b>收敛</b> &mdash; 偏压斜坡自动步长减半；量子与 CVT 模型通过内部
+同伦逐步加载。若某点仍失败，先放粗扫描步长或网格。</li>
+<li><b>每个实验都是独立 OS 进程</b>（DEVSIM 持有全局状态），单点崩溃
+不影响工作台；求解日志见底部日志面板。</li>
+<li><b>V<sub>t</sub> 调节</b> &mdash; 用栅金属功函数而非沟道掺杂：
+这类沟道本质上是无掺杂的，与真实 GAA/CFET 器件一致。</li>
+<li><b>短沟道极限</b> &mdash; t<sub>si</sub>=5&nbsp;nm 时静电缩放极限约
+在 L<sub>g</sub>&nbsp;&asymp; 12&ndash;15&nbsp;nm；再短提取器会诚实地
+报 NaN，因为器件已无法关断到 I<sub>crit</sub> 判据以下。</li>
+<li><b>无显示器 / CI</b> &mdash; GUI 可在
+<code>QT_QPA_PLATFORM=offscreen</code> 下运行；3D 渲染回退 OSMesa 或
+<code>xvfb-run</code>。</li>
+</ul>
+
+<hr>
+<p><i>本指南引用的全部数字均为随包示例配置的真实运行输出，可由测试套件
+复现。</i></p>
