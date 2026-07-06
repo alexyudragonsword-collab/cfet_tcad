@@ -164,10 +164,11 @@ contacts、并给出 <code>unit_cm</code>(1 个 CAD 单位等于多少 cm:nm 为
 model.step --list</code> 打印体对照表,<code>cfet-tcad import-step
 spec.yaml</code> 执行转换。所有实体先做布尔碎片化保证相邻区域共形
 划网,且划网在 CAD 原生坐标进行、成网后再缩放到 cm——纳米尺寸不会
-撞上 CAD 内核的几何容差。<code>configs/</code> 内置一套完整示例:
-<code>paper_fbc_cfet_demo.step</code>(论文双 fin FBC CFET)+ 映射
-spec + 可直接跑的 <code>paper_fbc_cfet_demo_run.yaml</code>——先对
-.step 做转换,再 Add/Run 该配置。</p>
+撞上 CAD 内核的几何容差。<code>configs/</code> 内置两套完整示例:
+<code>paper_fbc_cfet_demo.step</code>(论文双 fin FBC CFET)与
+<code>paper_sbc_cfet_demo.step</code>(双 sheet SBC CFET),各带映射
+spec + 可直接跑的 <code>*_run.yaml</code>——先对 .step 做转换,再
+Add/Run 该配置。</p>
 
 <p><b>设计导出。</b>Structure 3D 标签页的 <b>Export&hellip;</b> 按钮
 （或 <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj

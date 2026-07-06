@@ -1,0 +1,175 @@
+step_file: paper_sbc_cfet_demo.step
+unit_cm: 1.0e-07
+mesh_size: 2.0
+mesh_size_per_region:
+  oxide_n: 1.0
+  oxide_p: 1.0
+regions:
+  silicon_n:
+    select:
+      bbox:
+      - -0.5
+      - -0.2
+      - -0.5
+      - 45.5
+      - 21.5
+      - 18.5
+    material: Silicon
+  oxide_n:
+    select:
+      bbox:
+      - 14.5
+      - -1.2
+      - -1.2
+      - 30.5
+      - 21.5
+      - 19.2
+    material: Oxide
+  silicon_p:
+    select:
+      bbox:
+      - -0.5
+      - 49.8
+      - -0.5
+      - 45.5
+      - 71.5
+      - 18.5
+    material: Silicon
+  oxide_p:
+    select:
+      bbox:
+      - 14.5
+      - 48.8
+      - -1.2
+      - 30.5
+      - 71.5
+      - 19.2
+    material: Oxide
+contacts:
+  source_n:
+    select:
+      bbox:
+      - 0
+      - -0.2
+      - -0.2
+      - 0
+      - 21.5
+      - 18.2
+    region: silicon_n
+  drain_n:
+    select:
+      bbox:
+      - 45.0
+      - -0.2
+      - -0.2
+      - 45.0
+      - 21.5
+      - 18.2
+    region: silicon_n
+  gate_n:
+    select:
+      bbox:
+      - - 14.5
+        - -1.5
+        - 18.8
+        - 30.5
+        - 21.5
+        - 19.2
+      - - 14.5
+        - -1.5
+        - -1.2
+        - 30.5
+        - 21.5
+        - -0.8
+      - - 14.5
+        - -1.2
+        - -1.5
+        - 30.5
+        - -0.8
+        - 19.5
+      - - 14.5
+        - 5.8
+        - -1.5
+        - 30.5
+        - 6.2
+        - 19.5
+      - - 14.5
+        - 13.8
+        - -1.5
+        - 30.5
+        - 14.2
+        - 19.5
+      - - 14.5
+        - 20.8
+        - -1.5
+        - 30.5
+        - 21.2
+        - 19.5
+    region: oxide_n
+  source_p:
+    select:
+      bbox:
+      - 0
+      - 49.8
+      - -0.2
+      - 0
+      - 71.5
+      - 18.2
+    region: silicon_p
+  drain_p:
+    select:
+      bbox:
+      - 45.0
+      - 49.8
+      - -0.2
+      - 45.0
+      - 71.5
+      - 18.2
+    region: silicon_p
+  gate_p:
+    select:
+      bbox:
+      - - 14.5
+        - 48.5
+        - 18.8
+        - 30.5
+        - 71.5
+        - 19.2
+      - - 14.5
+        - 48.5
+        - -1.2
+        - 30.5
+        - 71.5
+        - -0.8
+      - - 14.5
+        - 48.8
+        - -1.5
+        - 30.5
+        - 49.2
+        - 19.5
+      - - 14.5
+        - 55.8
+        - -1.5
+        - 30.5
+        - 56.2
+        - 19.5
+      - - 14.5
+        - 63.8
+        - -1.5
+        - 30.5
+        - 64.2
+        - 19.5
+      - - 14.5
+        - 70.8
+        - -1.5
+        - 30.5
+        - 71.2
+        - 19.5
+    region: oxide_p
+interfaces:
+  si_ox_n:
+  - silicon_n
+  - oxide_n
+  si_ox_p:
+  - silicon_p
+  - oxide_p

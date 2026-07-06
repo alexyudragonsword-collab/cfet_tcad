@@ -184,6 +184,55 @@ def test_fig4_demo_generator_converts_cleanly(tmp_path):
         assert on_disk == import_spec("paper_fbc_cfet_demo.step")
 
 
+def test_sbc_demo_generator_converts_cleanly(tmp_path):
+    """The shipped paper SBC example: two vertically stacked nanosheets
+    per device.  Same guarantees as the FBC demo - all groups present,
+    gate contacts exterior-only (no interface faces swallowed)."""
+    import sys
+    sys.path.insert(0, "examples")
+    try:
+        from make_paper_sbc_step import build_step, import_spec
+    finally:
+        sys.path.pop(0)
+
+    step = tmp_path / "sbc.step"
+    build_step(step)
+    spec = import_spec(step.name)
+    msh = tmp_path / "sbc.msh"
+    summary = convert_step(spec, tmp_path, msh)
+    # two sheets / two shells per device, all claimed
+    assert summary["regions"] == {"silicon_n": 2, "oxide_n": 2,
+                                  "silicon_p": 2, "oxide_p": 2}
+    names = read_msh_physical_names(msh)
+    for group in ("silicon_n", "oxide_n", "silicon_p", "oxide_p",
+                  "source_n", "drain_n", "gate_n", "source_p", "drain_p",
+                  "gate_p", "si_ox_n", "si_ox_p"):
+        assert group in names
+
+    import gmsh
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(msh))
+        groups = {gmsh.model.getPhysicalName(d, t): (d, t)
+                  for d, t in gmsh.model.getPhysicalGroups(2)}
+
+        def faces(name):
+            d, t = groups[name]
+            return set(gmsh.model.getEntitiesForPhysicalGroup(d, t))
+        assert faces("gate_n") and faces("si_ox_n")
+        assert not faces("gate_n") & faces("si_ox_n")
+        assert not faces("gate_p") & faces("si_ox_p")
+    finally:
+        gmsh.finalize()
+
+    shipped = Path("configs/paper_sbc_cfet_demo_import.yaml")
+    if shipped.exists():
+        import yaml as _yaml
+        on_disk = _yaml.safe_load(shipped.read_text(encoding="utf-8"))
+        assert on_disk == import_spec("paper_sbc_cfet_demo.step")
+
+
 @pytest.mark.slow
 def test_converted_mesh_solves_through_external(step_file, tmp_path):
     from cfet_tcad.workflow.config import load_config

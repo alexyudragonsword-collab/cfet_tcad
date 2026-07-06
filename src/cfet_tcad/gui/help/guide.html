@@ -185,12 +185,13 @@ runnable starter config. On the command line:
 table, <code>cfet-tcad import-step spec.yaml</code> converts. Solids are
 boolean-fragmented so touching regions mesh conformally, and meshing
 happens in CAD coordinates (the finished mesh is scaled to cm), keeping
-nm-scale features clear of the CAD kernel's tolerance. A complete
-worked example ships in <code>configs/</code>:
+nm-scale features clear of the CAD kernel's tolerance. Two complete
+worked examples ship in <code>configs/</code>:
 <code>paper_fbc_cfet_demo.step</code> (the paper's dual-fin FBC CFET)
-with its mapping spec and a runnable
-<code>paper_fbc_cfet_demo_run.yaml</code> &mdash; convert the STEP
-first, then Add/Run the config.</p>
+and <code>paper_sbc_cfet_demo.step</code> (the dual-sheet SBC CFET),
+each with its mapping spec and a runnable
+<code>*_run.yaml</code> &mdash; convert the STEP first, then Add/Run
+the config.</p>
 
 <p><b>Design export.</b> The Structure 3D tab's <b>Export&hellip;</b>
 button (or <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj
