@@ -5,7 +5,7 @@
 > 本文件是唯一的、面向全工程生命周期的主计划——只写里程碑摘要，不重复
 > 存档文件里的实施细节。
 
-最后更新：提交 `7880e2b`（分支 `claude/cfet-tcad-simulation-zh2kfo`）。
+最后更新：提交 `6b05d4e` 构建收尾（分支 `claude/cfet-tcad-simulation-zh2kfo`）。
 
 ## 0. Plan-mode 计划归档索引
 
@@ -178,8 +178,10 @@ Node and Beyond》的器件级对比（详见
 
 ## 6. 待办 / 下一步候选
 
-- [ ] 视用户反馈决定是否重新手动触发 Windows 打包（当前 exe 落后于
-      设计导入导出、图标、改名、论文复现等多轮更新）
+- [x] Windows 打包已在 `6b05d4e` 上重新构建全绿（2026-07-05 23:25 手动
+      触发）：`cfet-tcad-windows-x64`（PyInstaller, 474MB）与
+      `cfet-tcad-windows-x64-nuitka`（Nuitka, 463MB，含 no_docstrings/
+      no_asserts 反向工程加固）——包含全部功能与现场修复
 - [ ] （可选）环振瞬态仿真——如果需要真正对标论文电路级结论，需新增
       寄生 RC 提取 + 瞬态求解模块，工作量较大，需用户明确需求后立项
 - [ ] （可选）Lombardi CVT 表面散射系数（b_ac/delta_sr）按面取向标定
