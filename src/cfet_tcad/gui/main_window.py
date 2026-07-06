@@ -43,7 +43,7 @@ import cfet_tcad
 from ..workflow.sweep import parse_param_spec
 from .about_dialog import AboutDialog
 from .experiment_table import COLUMNS, Experiment, ExperimentModel
-from .help_view import HelpView
+from .help_view import MANUALS, HelpView
 from .icon import app_icon
 from .log_console import LogConsole
 from .params_dialog import ParamsDialog
@@ -176,6 +176,12 @@ class MainWindow(QMainWindow):
         self.help.setWindowIcon(app_icon())
         self.help.setWindowTitle("User Guide / 用户指南")
         self.help.resize(920, 720)
+        # the bilingual software manual (features / scope / benchmarking
+        # / limitations): its own window, same language toggle
+        self.manual = HelpView(docs=MANUALS, title="Manual / 说明书")
+        self.manual.setWindowIcon(app_icon())
+        self.manual.setWindowTitle("Manual / 说明书")
+        self.manual.resize(920, 720)
 
         # left panel: current folder path above the YAML list
         left = QWidget()
@@ -224,6 +230,8 @@ class MainWindow(QMainWindow):
         self.menuBar().addAction(open_act)
         self.help_menu = QMenu("&Help", self)
         self.help_menu.addAction("User Guide / 用户指南", self.show_help)
+        self.help_menu.addAction("Manual (中英双语) / 说明书",
+                                 self.show_manual)
         self.help_menu.addAction(f"About {cfet_tcad.__app_name__}",
                                  self.show_about)
         self.menuBar().addMenu(self.help_menu)
@@ -551,11 +559,17 @@ class MainWindow(QMainWindow):
         self.help.raise_()
         self.help.activateWindow()
 
+    def show_manual(self) -> None:
+        self.manual.show()
+        self.manual.raise_()
+        self.manual.activateWindow()
+
     def show_about(self) -> None:
         AboutDialog(self).exec()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
-        self.help.close()  # the guide window follows the main window
+        self.help.close()  # the guide/manual windows follow the main one
+        self.manual.close()
         super().closeEvent(event)
 
     def _refresh_status(self) -> None:

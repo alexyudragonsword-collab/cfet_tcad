@@ -21,6 +21,8 @@ from pathlib import Path
 __version__ = "0.5"
 __author__ = "Yu Rui"
 __app_name__ = "STACKED CMOS TCAD"
+__copyright__ = "Copyright © 2026 Yu Rui"
+__license__ = "Apache-2.0"
 
 _IS_WINDOWS = os.name == "nt"
 

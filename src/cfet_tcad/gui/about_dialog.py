@@ -16,7 +16,12 @@ patterned on the Synopsys Sentaurus tool chain.</p>
 <a href="https://gmsh.info">gmsh</a> (meshing),
 <a href="https://pyvista.org">PyVista</a>/VTK (3D rendering),
 PySide6/Qt, and matplotlib.</p>
-<p>License: Apache-2.0</p>
+<hr>
+<p>{cfet_tcad.__copyright__}<br>
+Licensed under the Apache License, Version 2.0.</p>
+<p><i>This software is provided "as is", without warranty of any kind.
+It is a research / educational device-level TCAD tool and is not
+intended for production process or layout sign-off.</i></p>
 """
 
 

@@ -226,11 +226,15 @@ def test_main_window_constructs(qapp, tmp_path):
     assert menus == ["Open", "&Help"]
     actions = [a.text() for a in win.menuBar().actions()[1].menu().actions()]
     assert actions == ["User Guide / 用户指南",
+                       "Manual (中英双语) / 说明书",
                        f"About {cfet_tcad.__app_name__}"]
     win.show_help()
     assert win.help.isVisible() and win.help.isWindow()
+    win.show_manual()
+    assert win.manual.isVisible() and win.manual.isWindow()
     win.close()
-    assert not win.help.isVisible()  # follows the main window
+    assert not win.help.isVisible()      # both follow the main window
+    assert not win.manual.isVisible()
 
 
 def test_row_action_buttons_follow_rows(qapp, tmp_path):
@@ -417,6 +421,10 @@ def test_about_dialog_and_version(qapp):
     assert cfet_tcad.__version__ == "0.5"
     assert cfet_tcad.__author__ == "Yu Rui"
     assert "Yu Rui" in ABOUT_HTML and "0.5" in ABOUT_HTML
+    # copyright is surfaced in About and available as package metadata
+    assert cfet_tcad.__copyright__ == "Copyright © 2026 Yu Rui"
+    assert cfet_tcad.__copyright__ in ABOUT_HTML
+    assert "2026" in ABOUT_HTML and "Apache" in ABOUT_HTML
     dlg = AboutDialog()
     assert dlg.windowTitle() == f"About {cfet_tcad.__app_name__}"
     dlg.close()
@@ -426,6 +434,29 @@ def test_about_dialog_and_version(qapp):
     from pathlib import Path
     text = Path("pyproject.toml").read_text()
     assert re.search(r'^version = "0\.5"$', text, re.M)
+    # the license we advertise actually ships
+    assert Path("LICENSE").exists()
+    assert "Apache License" in Path("LICENSE").read_text()
+
+
+def test_manual_renders_with_language_toggle(qapp):
+    from cfet_tcad.gui.help_view import MANUALS, HelpView, manual_path
+
+    # both single-language manuals ship
+    assert manual_path("English").exists()
+    assert manual_path("中文").exists()
+
+    view = HelpView(docs=MANUALS, title="Manual / 说明书")
+    view.set_language("English")
+    text = view.browser.toPlainText()
+    for kw in ("Features", "Scope", "Benchmarking", "Limitations", "Ion"):
+        assert kw in text
+    assert "软件特性" not in text          # single-language, not both at once
+    view.set_language("中文")
+    text = view.browser.toPlainText()
+    for kw in ("软件特性", "适用范围", "对标", "局限"):
+        assert kw in text
+    assert "Limitations" not in text
 
 
 def test_default_project_root(tmp_path, monkeypatch):

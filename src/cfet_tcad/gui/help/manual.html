@@ -1,0 +1,178 @@
+<h1>STACKED CMOS TCAD &mdash; Software Manual</h1>
+
+<p><i>Version 0.5 &middot; Author: Yu Rui &middot; Open source (Apache-2.0)</i></p>
+
+<p>An open-source, device-level TCAD system for CFET and stacked
+gate-all-around (GAA) nanosheet transistors, built on Python, DEVSIM
+(drift-diffusion solver) and gmsh (meshing), with a desktop workbench
+patterned on the Synopsys Sentaurus tool chain. This manual summarizes
+what the software does, where it applies, how it compares to mainstream
+tools, and where its limits are. For step-by-step operating
+instructions see <b>Help &rarr; User Guide</b>.</p>
+
+<hr>
+<h2>1. Overview</h2>
+
+<p>STACKED CMOS TCAD solves the semiconductor drift-diffusion equations
+on 2D/3D meshes to predict the electrical characteristics of advanced
+CMOS devices &mdash; nanosheet GAA FETs, complementary FETs (CFET), and
+vertically stacked devices &mdash; from a small YAML description or an
+imported CAD/mesh file. It targets the 3&nbsp;nm node and beyond and is
+intended for research, methodology development, and teaching.</p>
+
+<hr>
+<h2>2. Features</h2>
+
+<h3>Device structures</h3>
+<ul>
+<li><code>nanosheet_2d</code> &mdash; 2D double-gate along-channel cross
+section (the standard fast 2D GAA approximation)</li>
+<li><code>gaa_3d</code> &mdash; full 3D single-nanosheet gate-all-around</li>
+<li><code>cfet_2d</code> / <code>cfet_3d</code> &mdash; complementary FET
+stacks (nFET over/under pFET)</li>
+<li><b>Multi-channel replication</b> &mdash; several fins side by side
+(<code>n_fins</code>) or several sheets stacked
+(<code>n_stacked_sheets</code>) per device</li>
+<li><code>external</code> &mdash; import a user-supplied gmsh MSH&nbsp;2.2
+mesh, or a <b>STEP (.step) CAD assembly</b> converted in-app</li>
+</ul>
+
+<h3>Physics</h3>
+<ul>
+<li>Drift-diffusion with Scharfetter&ndash;Gummel discretization</li>
+<li>Mobility: Caughey&ndash;Thomas (doping), CVT/Lombardi vertical-field
+degradation, high-field velocity saturation</li>
+<li>Density-gradient quantum correction (confinement V<sub>t</sub> shift,
+element-level current)</li>
+<li>SiGe(x) composition interpolation; per-surface-orientation mobility
+calibration (<code>mobility_scale_n/p</code>)</li>
+</ul>
+
+<h3>Experiments &amp; extraction</h3>
+<ul>
+<li>Transfer (Id&ndash;Vg), output (Id&ndash;Vd), CFET common-gate
+transfer, and inverter voltage-transfer characteristic (mixed
+device/circuit Newton)</li>
+<li>Figures of merit: V<sub>t</sub> (constant-current and max-g<sub>m</sub>),
+subthreshold swing, DIBL, I<sub>on</sub>/I<sub>off</sub>, inverter gain
+and noise margins</li>
+</ul>
+
+<h3>Workflow &amp; platform</h3>
+<ul>
+<li>Sentaurus-Workbench-style <b>Experiments</b> table with per-row
+Run/Stop/Sweep/Structure, live progress %, parallel sweeps / DOE, and
+CSV design-point import</li>
+<li>Interactive 3D VTK rendering; geometry import/export
+(STEP in; STL/PLY/VTP/OBJ out)</li>
+<li>Cross-platform: Linux and a standalone Windows executable
+(MKL&nbsp;PARDISO on Windows, OpenBLAS+UMFPACK on Linux)</li>
+<li>Open source under Apache-2.0; scriptable Python API and CLI</li>
+</ul>
+
+<hr>
+<h2>3. Scope of application</h2>
+
+<p><b>Intended for:</b></p>
+<ul>
+<li>Device-level TCAD of advanced CMOS (GAA nanosheet, CFET, stacked
+devices) at the 3&nbsp;nm node and beyond</li>
+<li>Methodology development, design-of-experiments sweeps, and
+architecture trade-off studies (e.g. fin- vs sheet-based CFET)</li>
+<li>Teaching drift-diffusion transport and quantum correction with a
+transparent, open codebase</li>
+</ul>
+
+<p><b>Not intended for:</b></p>
+<ul>
+<li>Production process- or layout-level sign-off</li>
+<li>Interoperating with proprietary vendor formats
+(TDR/BND/CMD, GDSII/OASIS)</li>
+<li>Stress-engineering or ring-oscillator circuit sign-off</li>
+</ul>
+
+<hr>
+<h2>4. Benchmarking against mainstream tools</h2>
+
+<h3>4.1 Tool-chain correspondence (Synopsys Sentaurus)</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Sentaurus component</th><th>STACKED CMOS TCAD equivalent</th></tr>
+<tr><td>Structure Editor (SDE)</td><td>Parametric geometry builders +
+STEP import + Structure 3D view</td></tr>
+<tr><td>Sentaurus Device (SDevice)</td><td>DEVSIM drift-diffusion with
+CVT mobility and density-gradient quantum correction</td></tr>
+<tr><td>Mixed-mode</td><td>Inverter VTC (device/circuit coupled
+Newton)</td></tr>
+<tr><td>Sentaurus Visual / Inspect</td><td>Results view (curves + FOMs)
+and Structure 3D (VTK)</td></tr>
+<tr><td>Workbench (SWB)</td><td>Experiments table, parallel sweeps /
+DOE</td></tr>
+</table>
+
+<h3>4.2 Device-level reproduction result</h3>
+<p>The fin-based (FBC) vs sheet-based (SBC) CFET comparison was
+reproduced against Jiang <i>et al.</i> (Applied Materials),
+<i>"Complementary FET Device and Circuit Level Evaluation Using
+Fin-Based and Sheet-Based Configurations Targeting 3nm Node and
+Beyond"</i>, whose data come from a commercial (Sentaurus-class) TCAD
+flow. Using a constant-current I<sub>on</sub> at I<sub>off</sub>=1&nbsp;nA
+(the paper's convention), all four current deltas match the paper in
+direction:</p>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Configuration</th><th>ΔI<sub>on,n</sub></th><th>paper</th>
+<th>ΔI<sub>on,p</sub></th><th>paper</th></tr>
+<tr><td>FBC (2 fins, 5&times;18 nm)</td><td>(ref)</td><td>(ref)</td>
+<td>(ref)</td><td>(ref)</td></tr>
+<tr><td>SBC (2 sheets, 18&times;5 nm)</td><td>+7.7%</td><td>+10%</td>
+<td>&minus;9.1%</td><td>&minus;5%</td></tr>
+<tr><td>SBC wide (2 sheets, 31&times;5 nm)</td><td>+48.9%</td><td>+73%</td>
+<td>+28.0%</td><td>+47%</td></tr>
+</table>
+
+<p>Subthreshold swing lands at 72&ndash;76&nbsp;mV/dec across the three
+configurations. Absolute currents are not directly comparable (the
+orientation mobility ratios use literature values rather than the
+paper's per-curve sub-band BTE calibration), but the device-level
+trends reproduce correctly: SBC nMOS leads FBC thanks to the (100)
+electron-mobility advantage, SBC pMOS trails on hole mobility, and a
+wider sheet lifts both.</p>
+
+<h3>4.3 Numerical cross-validation</h3>
+<p>Beyond the paper comparison, the solver is checked internally to
+bit-level agreement: disconnected device regions solve block-diagonally
+(proven exact), and replicated channels carry exactly N&times; the
+single-channel current (relative error &lt;10<sup>-6</sup>). On Windows
+the same MKL PARDISO direct solver used by commercial tools is
+employed.</p>
+
+<hr>
+<h2>5. Limitations</h2>
+
+<ul>
+<li><b>No layout import</b> (GDSII/OASIS): this is a device-level tool,
+upstream of process simulation.</li>
+<li><b>No proprietary-format interop</b>: Sentaurus TDR/BND/CMD files
+are not read or written.</li>
+<li><b>No stress mobility model</b>: strain effects are approximated by
+manual mobility calibration (<code>mobility_scale_n/p</code>) rather
+than a physical stress solver.</li>
+<li><b>No parasitic RC extraction or ring-oscillator transient</b>: the
+circuit-level capability stops at the inverter VTC (mixed-mode).</li>
+<li><b>3D fins are approximated as a rotated GAA</b> (four-sided
+wrap-around) rather than a true tri-gate on bulk.</li>
+<li><b>Quantum correction is available but off by default in 3D</b> for
+cost; enable it explicitly when confinement V<sub>t</sub> shift
+matters.</li>
+<li><b>Mobility orientation ratios use literature values</b>, not a
+per-curve BTE calibration &mdash; relative trends are reliable, absolute
+currents are indicative.</li>
+</ul>
+
+<hr>
+<h2>6. Copyright &amp; license</h2>
+
+<p>Copyright &copy; 2026 Yu Rui. Licensed under the Apache License,
+Version 2.0. This software is provided "as is", without warranty of any
+kind. Built on DEVSIM, gmsh, PyVista/VTK, PySide6/Qt, and matplotlib,
+each under its own license.</p>

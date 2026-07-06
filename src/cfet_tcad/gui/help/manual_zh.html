@@ -1,0 +1,156 @@
+<h1>STACKED CMOS TCAD &mdash; 软件说明书</h1>
+
+<p><i>版本 0.5 &middot; 作者:Yu Rui &middot; 开源(Apache-2.0)</i></p>
+
+<p>面向 CFET 与堆叠环栅(GAA)纳米片晶体管的开源器件级 TCAD 系统,
+基于 Python + DEVSIM(漂移-扩散求解器)+ gmsh(网格),桌面工作台
+对标 Synopsys Sentaurus 工具链。本说明书概述软件做什么、适用于何处、
+与主流工具的对标结果,以及能力边界。具体操作步骤见
+<b>Help &rarr; User Guide(用户指南)</b>。</p>
+
+<hr>
+<h2>1. 软件简介</h2>
+
+<p>STACKED CMOS TCAD 在 2D/3D 网格上求解半导体漂移-扩散方程,由一份
+简短的 YAML 描述或导入的 CAD/网格文件出发,预测先进 CMOS 器件的电学
+特性 &mdash; 纳米片 GAA FET、互补 FET(CFET)、垂直堆叠器件。定位
+3&nbsp;nm 及以下节点,面向科研、方法学开发与教学。</p>
+
+<hr>
+<h2>2. 软件特性</h2>
+
+<h3>器件结构</h3>
+<ul>
+<li><code>nanosheet_2d</code> &mdash; 2D 双栅沿沟道剖面(标准的快速
+2D GAA 近似)</li>
+<li><code>gaa_3d</code> &mdash; 完整 3D 单纳米片环栅</li>
+<li><code>cfet_2d</code> / <code>cfet_3d</code> &mdash; 互补 FET 堆叠
+(nFET 与 pFET 上下叠置)</li>
+<li><b>多沟道复制</b> &mdash; 每器件多个并排 fin(<code>n_fins</code>)
+或多个叠层 sheet(<code>n_stacked_sheets</code>)</li>
+<li><code>external</code> &mdash; 导入用户自备的 gmsh MSH&nbsp;2.2 网格,
+或在软件内转换 <b>STEP(.step)CAD 装配体</b></li>
+</ul>
+
+<h3>物理模型</h3>
+<ul>
+<li>漂移-扩散,Scharfetter&ndash;Gummel 离散</li>
+<li>迁移率:Caughey&ndash;Thomas(掺杂)、CVT/Lombardi 垂直场退化、
+高场速度饱和</li>
+<li>密度梯度量子修正(限域引起的 V<sub>t</sub> 偏移、element 级电流)</li>
+<li>SiGe(x) 组分插值;按晶面取向的迁移率标定
+(<code>mobility_scale_n/p</code>)</li>
+</ul>
+
+<h3>实验与参数提取</h3>
+<ul>
+<li>转移特性(Id&ndash;Vg)、输出特性(Id&ndash;Vd)、CFET 共栅转移,
+以及反相器电压传输特性(器件/电路混合牛顿求解)</li>
+<li>品质因数:V<sub>t</sub>(恒流法与最大 g<sub>m</sub> 法)、亚阈摆幅、
+DIBL、I<sub>on</sub>/I<sub>off</sub>、反相器增益与噪声容限</li>
+</ul>
+
+<h3>工作流与平台</h3>
+<ul>
+<li>Sentaurus Workbench 风格的<b>实验表</b>,每行自带
+Run/Stop/Sweep/Structure、实时进度百分比、并行扫描 / DOE、
+CSV 设计点导入</li>
+<li>交互式 3D VTK 渲染;几何导入/导出(STEP 入;STL/PLY/VTP/OBJ 出)</li>
+<li>跨平台:Linux 与 Windows 独立可执行程序
+(Windows 用 MKL&nbsp;PARDISO,Linux 用 OpenBLAS+UMFPACK)</li>
+<li>Apache-2.0 开源;可脚本化的 Python API 与命令行</li>
+</ul>
+
+<hr>
+<h2>3. 适用范围</h2>
+
+<p><b>适用于:</b></p>
+<ul>
+<li>先进 CMOS(GAA 纳米片、CFET、堆叠器件,3&nbsp;nm 及以下)的
+器件级 TCAD</li>
+<li>方法学开发、DOE 参数扫描、架构权衡研究(如 fin 型 vs sheet 型
+CFET)</li>
+<li>以透明开源的代码库教学漂移-扩散输运与量子修正</li>
+</ul>
+
+<p><b>不适用于:</b></p>
+<ul>
+<li>量产工艺级或版图级签核</li>
+<li>与厂商专有格式互操作(TDR/BND/CMD、GDSII/OASIS)</li>
+<li>应力工程或环形振荡器电路级签核</li>
+</ul>
+
+<hr>
+<h2>4. 对标主流软件</h2>
+
+<h3>4.1 工具链对应(Synopsys Sentaurus)</h3>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>Sentaurus 组件</th><th>STACKED CMOS TCAD 对应件</th></tr>
+<tr><td>Structure Editor(SDE)</td><td>参数化几何构建器 + STEP 导入 +
+Structure 3D 视图</td></tr>
+<tr><td>Sentaurus Device(SDevice)</td><td>DEVSIM 漂移-扩散,含 CVT
+迁移率与密度梯度量子修正</td></tr>
+<tr><td>Mixed-mode(混合模式)</td><td>反相器 VTC(器件/电路耦合
+牛顿)</td></tr>
+<tr><td>Sentaurus Visual / Inspect</td><td>Results 视图(曲线 + 品质
+因数)与 Structure 3D(VTK)</td></tr>
+<tr><td>Workbench(SWB)</td><td>实验表、并行扫描 / DOE</td></tr>
+</table>
+
+<h3>4.2 器件级复现结果</h3>
+<p>fin 型(FBC)vs sheet 型(SBC)CFET 的对比,对标 Jiang <i>等</i>
+(Applied Materials)论文
+<i>《Complementary FET Device and Circuit Level Evaluation Using
+Fin-Based and Sheet-Based Configurations Targeting 3nm Node and
+Beyond》</i>,其数据来自商用(Sentaurus 级)TCAD 流程。以
+I<sub>off</sub>=1&nbsp;nA 的恒流 I<sub>on</sub>(与论文口径一致),
+四项电流增量方向全部与论文一致:</p>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr><th>构型</th><th>ΔI<sub>on,n</sub></th><th>论文</th>
+<th>ΔI<sub>on,p</sub></th><th>论文</th></tr>
+<tr><td>FBC(2 fin,5&times;18 nm)</td><td>(基准)</td><td>(基准)</td>
+<td>(基准)</td><td>(基准)</td></tr>
+<tr><td>SBC(2 sheet,18&times;5 nm)</td><td>+7.7%</td><td>+10%</td>
+<td>&minus;9.1%</td><td>&minus;5%</td></tr>
+<tr><td>SBC 宽(2 sheet,31&times;5 nm)</td><td>+48.9%</td><td>+73%</td>
+<td>+28.0%</td><td>+47%</td></tr>
+</table>
+
+<p>三种构型的亚阈摆幅落在 72&ndash;76&nbsp;mV/dec。绝对电流不可直接
+比较(取向迁移率比取文献典型值,而非论文的逐曲线 sub-band BTE
+标定),但器件级趋势正确复现:SBC nMOS 因 (100) 面电子迁移率占优而
+领先 FBC,SBC pMOS 因空穴迁移率劣势而落后,加宽 sheet 后 n/p 同时
+提升。</p>
+
+<h3>4.3 数值交叉验证</h3>
+<p>除论文对比外,求解器内部做到位精确一致:不连通的器件区域按块对角
+求解(已证明精确),复制沟道恰好承载单沟道电流的 N&nbsp;倍(相对
+误差 &lt;10<sup>-6</sup>)。Windows 上采用与商用工具相同的 MKL PARDISO
+直接求解器。</p>
+
+<hr>
+<h2>5. 局限</h2>
+
+<ul>
+<li><b>无版图导入</b>(GDSII/OASIS):本工具是器件级,处于工艺仿真的
+上游。</li>
+<li><b>不与专有格式互操作</b>:不读写 Sentaurus TDR/BND/CMD 文件。</li>
+<li><b>无应力迁移率模型</b>:应变效应用手动迁移率标定
+(<code>mobility_scale_n/p</code>)近似,而非物理应力求解器。</li>
+<li><b>无寄生 RC 提取或环振瞬态</b>:电路级能力止于反相器 VTC
+(混合模式)。</li>
+<li><b>3D fin 用旋转 GAA 近似</b>(四面环包),而非衬底上真实的
+三栅。</li>
+<li><b>量子修正 3D 默认关闭</b>(成本考虑);限域 V<sub>t</sub> 偏移
+重要时需显式开启。</li>
+<li><b>迁移率取向比取文献值</b>,非逐曲线 BTE 标定 &mdash; 相对趋势
+可靠,绝对电流为指示性。</li>
+</ul>
+
+<hr>
+<h2>6. 版权与许可</h2>
+
+<p>Copyright &copy; 2026 Yu Rui。基于 Apache License 2.0 许可。本软件
+按“现状”提供,不作任何形式的担保。构建于 DEVSIM、gmsh、PyVista/VTK、
+PySide6/Qt 与 matplotlib,各组件遵循其各自许可。</p>
