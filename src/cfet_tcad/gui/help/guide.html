@@ -31,28 +31,43 @@ the installation.</p>
 <hr>
 <h2>2. Five-minute tour</h2>
 
-<p><b>Workflow:</b> pick a config on the left &rarr; review/edit it in
-<b>Parameters</b> &rarr; press <b>Run</b> &rarr; watch the row turn green in
-<b>Experiments</b> &rarr; double-click the row to open <b>Results</b> and
-<b>Structure&nbsp;3D</b>.</p>
+<p><b>Workflow:</b> the current config folder path sits above the YAML
+list on the left (change it with <b>Open</b> in the menu bar).
+Right-click a YAML &rarr; <b>Add</b> to register it as a pending
+experiment row &rarr; press that row's <b>Run</b> button (or <b>Run
+All</b> in the toolbar) &rarr; watch the row turn green &rarr;
+double-click the row to load <b>Results</b> (bottom-left) and
+<b>Structure&nbsp;3D</b> (bottom-right). All three panes live in one
+window, separated by draggable splitters.</p>
 
 <h3>2.1 The Experiments table</h3>
 
-<p>One row per simulation. The status chip follows the Sentaurus Workbench
-convention &mdash; <b>gray</b> queued, <b>yellow</b> running, <b>green</b>
-done, <b>red</b> failed &mdash; and the figure-of-merit columns
-(V<sub>t</sub>, SS, I<sub>on</sub>, I<sub>off</sub>, DIBL) are filled in
-automatically from the run's extraction output.</p>
+<p>One row per simulation, each row driving itself through the buttons in
+its <b>Actions</b> cell: <b>Run</b> (start, or re-run a finished row in
+place &mdash; same output folder, results overwritten), <b>Stop</b>,
+<b>Sweep</b> (expand a DOE grid over this row's config), and
+<b>Structure</b> (fast mesh preview, no solve). The status chip follows
+the Sentaurus Workbench convention &mdash; <b>light-gray</b> pending
+(added, waiting for Run), <b>gray</b> queued, <b>yellow</b> running,
+<b>green</b> done, <b>red</b> failed, <b>gray-blue</b> stopped &mdash;
+and the figure-of-merit columns (V<sub>t</sub>, SS, I<sub>on</sub>,
+I<sub>off</sub>, DIBL) are filled in automatically from the run's
+extraction output. The toolbar's <b>Run All</b> starts every
+pending/stopped/failed row; <b>Stop All</b> halts everything.</p>
 
 <p><img src="img/tab_experiments.png" width="820"></p>
 
-<h3>2.2 Parameters</h3>
+<h3>2.2 The parameter editor</h3>
 
-<p>The form is generated from the configuration schema and grouped by
-section. Enumerated fields (structure, mobility model, quantum model,
-materials) are combo boxes; every save is validated, so a typo is caught
-before a solver ever starts. <b>Run</b> always uses the current form state,
-so you can edit and re-run without touching files.</p>
+<p>Double-click a YAML in the left list (or right-click &rarr;
+<b>Edit</b>) to pop up its parameter editor. The form is generated from
+the configuration schema and grouped by section. Enumerated fields
+(structure, mobility model, quantum model, materials) are combo boxes;
+every save is validated, so a typo is caught before a solver ever
+starts. <b>Save</b> overwrites the opened file; <b>Save As&hellip;</b>
+writes the edits to a new YAML. The right-click menu also offers
+<b>Copy&hellip;</b> (duplicate under a new name) and <b>Delete</b>
+(confirmed file removal).</p>
 
 <p><img src="img/tab_parameters.png" width="820"></p>
 
@@ -67,10 +82,10 @@ experiment types render appropriately: transfer (Id&ndash;Vg), output
 
 <h3>2.4 Structure 3D</h3>
 
-<p>Real VTK rendering of the device. Use the toolbar <b>Structure</b>
-button for a seconds-fast preview of the current configuration (mesh +
-doping, no solve &mdash; the SDE workflow), or double-click a finished
-experiment to load its bias-point snapshots. The combos switch the
+<p>Real VTK rendering of the device. Use a row's <b>Structure</b>
+button for a seconds-fast preview of that experiment's configuration
+(mesh + doping, no solve &mdash; the SDE workflow), or double-click a
+finished experiment to load its bias-point snapshots. The combos switch the
 snapshot (bias point) and the colored field:
 <code>Structure</code> (materials), <code>NetDoping</code> (symmetric-log),
 <code>Potential</code>, <code>Electrons</code>/<code>Holes</code> (log), and
@@ -89,11 +104,13 @@ and a gate-all-around nanosheet colored by potential in the ON state:</p>
 <hr>
 <h2>3. Sweeps (design of experiments)</h2>
 
-<p><b>Sweep&hellip;</b> opens the DOE dialog. Enter one parameter per line
-as <code>path=v1,v2,&hellip;</code>; multiple lines form a cartesian
-product, or check <b>zip</b> to advance the lists together as paired
-tuples. Points expand into individual table rows executed by a bounded
-process pool &mdash; rows light up green one by one:</p>
+<p>A row's <b>Sweep</b> button opens the DOE dialog over that row's
+config. Enter one parameter per line as <code>path=v1,v2,&hellip;</code>;
+multiple lines form a cartesian product, or check <b>zip</b> to advance
+the lists together as paired tuples. Points expand into individual
+<i>pending</i> table rows &mdash; press <b>Run All</b> (or per-row Run)
+to execute them through the bounded process pool, and the rows light up
+green one by one:</p>
 
 <p><img src="img/sweep_midflight.png" width="820"></p>
 
@@ -225,11 +242,11 @@ inversion:</p>
 <p><img src="img/vtc_curves.png" width="820"></p>
 
 <p>While a row is <b>running</b> its Status cell shows a live progress
-percentage (measured bias points / total). Right-click any row for
-<b>Stop</b> (kills that run; the row turns gray-blue "stopped"),
-<b>Remove from list</b> (drops the row, files on disk are kept), and
-<b>Open results folder</b>. The toolbar Stop button still stops
-everything.</p>
+percentage (measured bias points / total). Besides the per-row buttons,
+right-clicking a row offers <b>Stop</b> (kills that run; the row turns
+gray-blue "stopped"), <b>Remove from list</b> (drops the row, files on
+disk are kept), and <b>Open results folder</b>. The toolbar <b>Stop
+All</b> still stops everything at once.</p>
 
 <hr>
 <h2>7. Command line</h2>

@@ -80,10 +80,28 @@ class RunQueue(QObject):
         return Experiment(name=name, config_path=cfg, out_dir=out_dir,
                           overrides=dict(overrides or {}))
 
-    def enqueue(self, exp: Experiment) -> int:
-        row = self.model.add(exp)
+    def add(self, exp: Experiment) -> int:
+        """Register an experiment in the table as *pending*: it will not
+        run until its own Run button (or Run All) starts it."""
+        return self.model.add(exp)
+
+    def start(self, exp: Experiment) -> None:
+        """(Re)start one experiment.  Finished/stopped/failed rows requeue
+        in place: same row, same out_dir, previous results overwritten."""
+        if exp.status in ("queued", "running"):
+            return
+        exp.status = "queued"
+        exp.progress = None
+        exp.fom = {}
+        self._touch(exp)
         self._maybe_start()
-        return row
+
+    def run_all(self) -> None:
+        """Start every pending/stopped/failed experiment.  Finished (done)
+        rows are left alone - rerunning those is a per-row decision."""
+        for exp in list(self.model.experiments):
+            if exp.status in ("pending", "stopped", "failed"):
+                self.start(exp)
 
     # --- scheduling -----------------------------------------------------
 

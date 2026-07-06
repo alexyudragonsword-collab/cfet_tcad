@@ -52,8 +52,8 @@ def test_experiment_model_status_colors(qapp, tmp_path):
     assert model.rowCount() == 1
     status_col = COLUMNS.index("Status")
     idx = model.index(row, status_col)
-    assert model.data(idx) == "queued"
-    assert model.data(idx, Qt.BackgroundRole) == STATUS_COLORS["queued"]
+    assert model.data(idx) == "pending"
+    assert model.data(idx, Qt.BackgroundRole) == STATUS_COLORS["pending"]
     model.experiments[row].status = "done"
     assert model.data(idx, Qt.BackgroundRole) == STATUS_COLORS["done"]
     assert model.data(model.index(row, 1)) == "b=1"
@@ -133,7 +133,9 @@ def test_stop_queued_experiment(qapp, tmp_path):
     queue = RunQueue(model, max_parallel=0)  # nothing ever starts
     exp = Experiment(name="q", config_path=tmp_path / "c.yaml",
                      out_dir=tmp_path)
-    model.add(exp)
+    queue.add(exp)
+    queue.start(exp)
+    assert exp.status == "queued"
     queue.stop(exp)
     assert exp.status == "stopped"
     queue.max_parallel = 2
@@ -141,6 +143,44 @@ def test_stop_queued_experiment(qapp, tmp_path):
     assert exp.status == "stopped" and not queue._procs
     queue.stop(exp)  # idempotent on terminal states
     assert exp.status == "stopped"
+
+
+def test_pending_lifecycle_and_run_all(qapp, tmp_path):
+    from cfet_tcad.gui.experiment_table import Experiment, ExperimentModel
+    from cfet_tcad.gui.run_queue import RunQueue
+
+    model = ExperimentModel()
+    queue = RunQueue(model, max_parallel=0)  # scheduler can never launch
+    exps = [Experiment(name=f"e{i}", config_path=tmp_path / "c.yaml",
+                       out_dir=tmp_path) for i in range(4)]
+    for e in exps:
+        queue.add(e)
+    # added rows are pending and the scheduler leaves them alone
+    queue._maybe_start()
+    assert all(e.status == "pending" for e in exps)
+
+    # per-row start queues exactly that one
+    queue.start(exps[0])
+    assert exps[0].status == "queued"
+    assert [e.status for e in exps[1:]] == ["pending"] * 3
+
+    # run_all picks up pending/stopped/failed but not done
+    exps[1].status = "done"
+    exps[2].status = "failed"
+    queue.run_all()
+    assert exps[1].status == "done"      # finished rows stay finished
+    assert exps[2].status == "queued"    # failed rows retry
+    assert exps[3].status == "queued"
+
+    # in-place rerun: a finished row requeues with progress/fom cleared
+    exps[1].fom = {"Ion [A]": 1e-5}
+    exps[1].progress = 1.0
+    queue.start(exps[1])
+    assert exps[1].status == "queued"
+    assert exps[1].fom == {} and exps[1].progress is None
+    # starting an already queued row is a no-op
+    queue.start(exps[1])
+    assert exps[1].status == "queued"
 
 
 def test_run_queue_materializes_point_config(qapp, tmp_path):
@@ -155,30 +195,130 @@ def test_run_queue_materializes_point_config(qapp, tmp_path):
     import yaml
     raw = yaml.safe_load(exp.config_path.read_text())
     assert raw["device"]["l_gate_nm"] == 18.0
-    assert exp.status == "queued"
+    assert exp.status == "pending"  # nothing runs before its Run button
 
 
 def test_main_window_constructs(qapp, tmp_path):
     import cfet_tcad
+    from PySide6.QtCore import Qt
+
     from cfet_tcad.gui.main_window import MainWindow
 
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
     assert win.windowTitle() == (
         f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
     assert win.config_list.count() == 0
-    # Experiments/Parameters/Results/Structure (the guide is a window,
-    # not a tab)
-    assert win.tabs.count() == 4
-    # single Help entry point: the top-left menu opens the guide window
+    # the folder path is surfaced above the YAML list
+    assert win.folder_label.text() == str(tmp_path / "configs")
+    # single composite workspace: Experiments on top, Results bottom-left,
+    # Structure 3D bottom-right (the guide is a window, not a tab)
+    assert win.center_split.orientation() == Qt.Vertical
+    assert win.center_split.count() == 2
+    assert win.center_split.widget(0) is win.table
+    assert win.bottom_split.orientation() == Qt.Horizontal
+    assert win.bottom_split.widget(0) is win.results
+    assert win.bottom_split.widget(1) is win.structure
+    # toolbar drives the whole queue; per-row buttons drive one row
+    assert [a.text() for a in win.toolbar.actions()] == ["Run All",
+                                                         "Stop All"]
+    # menu bar: Open (config folder) sits left of Help
     menus = [a.text() for a in win.menuBar().actions()]
-    assert menus == ["&Help"]
-    actions = [a.text() for a in win.menuBar().actions()[0].menu().actions()]
+    assert menus == ["Open", "&Help"]
+    actions = [a.text() for a in win.menuBar().actions()[1].menu().actions()]
     assert actions == ["User Guide / 用户指南",
                        f"About {cfet_tcad.__app_name__}"]
     win.show_help()
     assert win.help.isVisible() and win.help.isWindow()
     win.close()
     assert not win.help.isVisible()  # follows the main window
+
+
+def test_row_action_buttons_follow_rows(qapp, tmp_path):
+    from cfet_tcad.gui.experiment_table import COLUMNS
+    from cfet_tcad.gui.main_window import MainWindow
+
+    win = MainWindow(project_root=tmp_path)
+    (win.config_folder).mkdir(parents=True, exist_ok=True)
+    cfg = win.config_folder / "a.yaml"
+    import shutil
+    shutil.copyfile("configs/nsheet_nfet_2d.yaml", cfg)
+    exp = win.add_config_to_experiments(cfg)
+    assert exp.status == "pending"
+    assert len(win._action_widgets) == 1
+    w = win._action_widgets[0]
+    assert w.exp is exp
+    # pending: Run enabled, Stop disabled
+    assert w.run_btn.isEnabled() and not w.stop_btn.isEnabled()
+    exp.status = "running"
+    win._refresh_action_row(0)
+    assert not w.run_btn.isEnabled() and w.stop_btn.isEnabled()
+    # the Actions column renders through widgets, not model text
+    col = COLUMNS.index("Actions")
+    assert win.model.data(win.model.index(0, col)) is None
+    # removing the row rebuilds the strips
+    win.model.remove(0)
+    assert win._action_widgets == []
+    win.close()
+
+
+def test_config_file_operations(qapp, tmp_path):
+    from cfet_tcad.gui.main_window import MainWindow
+
+    win = MainWindow(project_root=tmp_path)
+    win.config_folder.mkdir(parents=True, exist_ok=True)
+    import shutil
+    src = win.config_folder / "base.yaml"
+    shutil.copyfile("configs/nsheet_nfet_2d.yaml", src)
+    win.populate_configs()
+    assert win.config_list.count() == 1
+
+    copy = win.copy_config(src, "variant")  # extension added automatically
+    assert copy.name == "variant.yaml" and copy.exists()
+    assert win.config_list.count() == 2
+    with pytest.raises(FileExistsError):
+        win.copy_config(src, "variant.yaml")
+
+    win.delete_config(copy)
+    assert not copy.exists()
+    assert win.config_list.count() == 1
+    win.close()
+
+
+def test_params_dialog_save_and_save_as(qapp, tmp_path, monkeypatch):
+    from cfet_tcad.gui.params_dialog import ParamsDialog
+
+    import shutil
+    path = tmp_path / "dev.yaml"
+    shutil.copyfile("configs/nsheet_nfet_2d.yaml", path)
+    saved: list = []
+    dlg = ParamsDialog(path)
+    dlg.saved.connect(saved.append)
+    # edit a field, Save overwrites the opened file
+    dlg.form._widgets[("device", "l_gate_nm")].setText("21.0")
+    dlg.save()
+    import yaml
+    assert yaml.safe_load(path.read_text())["device"]["l_gate_nm"] == 21.0
+    assert saved == [path]
+
+    # Save As writes a second file (file dialog stubbed out)
+    target = tmp_path / "dev_b.yaml"
+    monkeypatch.setattr(
+        "cfet_tcad.gui.params_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(target), "YAML (*.yaml)"))
+    dlg2 = ParamsDialog(path)
+    dlg2.saved.connect(saved.append)
+    dlg2.save_as()
+    assert target.exists() and saved[-1] == target
+    assert yaml.safe_load(target.read_text())["device"]["l_gate_nm"] == 21.0
+    # invalid values never reach disk
+    dlg3 = ParamsDialog(path)
+    dlg3.form._widgets[("device", "polarity")].setCurrentText("x")
+    before = path.read_text()
+    monkeypatch.setattr(
+        "cfet_tcad.gui.params_dialog.QMessageBox.warning",
+        lambda *a, **k: None)
+    dlg3.save()
+    assert path.read_text() == before
 
 
 def test_structure_view_respects_no3d_gate(qapp, monkeypatch):

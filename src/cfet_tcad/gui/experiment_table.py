@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor
 
 # Sentaurus Workbench node colors
 STATUS_COLORS = {
+    "pending": QColor("#e8eaed"),  # added, waits for its Run button
     "queued": QColor("#d0d0d0"),
     "running": QColor("#f4d03f"),
     "done": QColor("#7dcea0"),
@@ -15,7 +16,7 @@ STATUS_COLORS = {
     "stopped": QColor("#aab7c4"),
 }
 
-COLUMNS = ("Experiment", "Parameters", "Status",
+COLUMNS = ("Experiment", "Parameters", "Status", "Actions",
            "Vt [V]", "SS [mV/dec]", "Ion [A]", "Ioff [A]", "DIBL [mV/V]")
 
 
@@ -25,7 +26,7 @@ class Experiment:
     config_path: Path
     out_dir: Path
     overrides: dict = field(default_factory=dict)
-    status: str = "queued"
+    status: str = "pending"
     fom: dict = field(default_factory=dict)  # summarized, keys ~ COLUMNS[3:]
     progress: float | None = None  # 0..1 while running (parsed from CLI)
 
@@ -97,6 +98,8 @@ class ExperimentModel(QAbstractTableModel):
                 if exp.status == "running" and exp.progress is not None:
                     return f"running {exp.progress:.0%}"
                 return exp.status
+            if col == "Actions":  # rendered by per-row index widgets
+                return None
             value = exp.fom.get(col)
             if value is None:
                 return ""

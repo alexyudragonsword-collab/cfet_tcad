@@ -1,21 +1,29 @@
 """Main window: Sentaurus Workbench-style layout.
 
-Left: config browser.  Center tabs: Experiments (node table), Parameters
-(config form), Results (curves + FOMs), Structure 3D.  Bottom: log
-console.  Toolbar drives runs and sweeps through the RunQueue; the Help
-menu (top-left) opens the user guide window and the About dialog.
+Left: config browser (current folder path on top; double-click a YAML to
+edit it, right-click for Edit/Add/Copy/Delete).  Center: one composite
+workspace - Experiments table on top (each row carries its own
+Run/Stop/Sweep/Structure buttons), Results bottom-left, Structure 3D
+bottom-right, all separated by draggable splitters.  Bottom: log console.
+Toolbar holds the whole-queue Run All / Stop All; the menu bar has Open
+(pick a config folder) and Help.
 """
 
+import shutil
 import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
     QListWidget,
     QMainWindow,
     QMenu,
@@ -25,20 +33,21 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QTableView,
-    QTabWidget,
     QToolBar,
+    QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 import cfet_tcad
 
 from ..workflow.sweep import parse_param_spec
 from .about_dialog import AboutDialog
-from .config_form import ConfigForm
-from .experiment_table import ExperimentModel
+from .experiment_table import COLUMNS, Experiment, ExperimentModel
 from .help_view import HelpView
 from .icon import app_icon
 from .log_console import LogConsole
+from .params_dialog import ParamsDialog
 from .results_view import ResultsView
 from .run_queue import RunQueue
 from .structure_view import StructureView
@@ -94,6 +103,38 @@ class SweepDialog(QDialog):
         self.zip_box.setChecked(True)
 
 
+class RowActions(QWidget):
+    """The per-row Run/Stop/Sweep/Structure button strip: every
+    experiment row drives itself, independent of the toolbar."""
+
+    def __init__(self, exp: Experiment, window: "MainWindow", parent=None):
+        super().__init__(parent)
+        self.exp = exp
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(2, 0, 2, 0)
+        lay.setSpacing(2)
+
+        def _btn(text: str, slot) -> QToolButton:
+            b = QToolButton()
+            b.setText(text)
+            b.setAutoRaise(True)
+            b.clicked.connect(slot)
+            lay.addWidget(b)
+            return b
+
+        self.run_btn = _btn("Run", lambda: window.queue.start(exp))
+        self.stop_btn = _btn("Stop", lambda: window.queue.stop(exp))
+        self.sweep_btn = _btn("Sweep", lambda: window.run_sweep(exp))
+        self.structure_btn = _btn("Structure",
+                                  lambda: window.preview_structure(exp))
+        self.refresh()
+
+    def refresh(self) -> None:
+        self.run_btn.setEnabled(
+            self.exp.status in ("pending", "done", "failed", "stopped"))
+        self.stop_btn.setEnabled(self.exp.status in ("queued", "running"))
+
+
 class MainWindow(QMainWindow):
     def __init__(self, project_root: Path | None = None):
         super().__init__()
@@ -105,15 +146,18 @@ class MainWindow(QMainWindow):
         self.results_root = self.project_root / "results" / "gui"
 
         # widgets
+        self.folder_label = QLabel()
+        self.folder_label.setStyleSheet("padding: 2px; color: #444;")
         self.config_list = QListWidget()
         self.model = ExperimentModel(self)
         self.queue = RunQueue(self.model, parent=self)
         self.table = QTableView()
         self.table.setModel(self.model)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.form = ConfigForm()
+        self.table.verticalHeader().setDefaultSectionSize(28)
         self.results = ResultsView()
         self.log = LogConsole()
+        self._action_widgets: list[RowActions] = []
 
         self.structure = StructureView()
         # the user guide lives in its own window, reached from the Help
@@ -122,15 +166,32 @@ class MainWindow(QMainWindow):
         self.help.setWindowIcon(app_icon())
         self.help.setWindowTitle("User Guide / 用户指南")
         self.help.resize(920, 720)
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self.table, "Experiments")
-        self.tabs.addTab(self.form, "Parameters")
-        self.tabs.addTab(self.results, "Results")
-        self.tabs.addTab(self.structure, "Structure 3D")
+
+        # left panel: current folder path above the YAML list
+        left = QWidget()
+        lbox = QVBoxLayout(left)
+        lbox.setContentsMargins(0, 0, 0, 0)
+        lbox.setSpacing(2)
+        lbox.addWidget(self.folder_label)
+        lbox.addWidget(self.config_list)
+
+        # center workspace: Experiments over (Results | Structure 3D),
+        # every pane resizable through the splitters
+        self.bottom_split = QSplitter(Qt.Horizontal)
+        self.bottom_split.addWidget(self.results)
+        self.bottom_split.addWidget(self.structure)
+        self.center_split = QSplitter(Qt.Vertical)
+        self.center_split.addWidget(self.table)
+        self.center_split.addWidget(self.bottom_split)
+        self.center_split.setStretchFactor(0, 1)  # experiments: ~1/3
+        self.center_split.setStretchFactor(1, 2)
+        # initial split: size hints would squeeze the table to a couple of
+        # rows; hand the splitter an explicit 1/3 : 2/3 starting ratio
+        self.center_split.setSizes([220, 440])
 
         hsplit = QSplitter(Qt.Horizontal)
-        hsplit.addWidget(self.config_list)
-        hsplit.addWidget(self.tabs)
+        hsplit.addWidget(left)
+        hsplit.addWidget(self.center_split)
         hsplit.setStretchFactor(0, 1)
         hsplit.setStretchFactor(1, 4)
         vsplit = QSplitter(Qt.Vertical)
@@ -140,21 +201,20 @@ class MainWindow(QMainWindow):
         vsplit.setStretchFactor(1, 1)
         self.setCentralWidget(vsplit)
 
-        # toolbar
-        bar = QToolBar("main")
-        bar.setMovable(False)
-        self.addToolBar(bar)
-        bar.addAction("Run", self.run_current)
-        bar.addAction("Sweep...", self.run_sweep)
-        bar.addAction("Stop", self.queue.stop_all)
-        bar.addSeparator()
-        bar.addAction("Structure", self.preview_structure)
-        bar.addAction("Open config folder...", self.pick_folder)
+        # toolbar: whole-queue controls (per-row buttons drive one row)
+        self.toolbar = QToolBar("main")
+        self.toolbar.setMovable(False)
+        self.addToolBar(self.toolbar)
+        self.toolbar.addAction("Run All", self.queue.run_all)
+        self.toolbar.addAction("Stop All", self.queue.stop_all)
 
-        # menu bar: single Help entry point at the top-left.  Construct
-        # the QMenu with an explicit parent instead of addMenu(str):
+        # menu bar: Open (config folder) left of Help.  Construct the
+        # QMenu with an explicit parent instead of addMenu(str):
         # shiboken deletes the C++ menu of the string overload once the
         # temporary wrapper from menuBar().actions() is garbage collected
+        open_act = QAction("Open", self)
+        open_act.triggered.connect(self.pick_folder)
+        self.menuBar().addAction(open_act)
         self.help_menu = QMenu("&Help", self)
         self.help_menu.addAction("User Guide / 用户指南", self.show_help)
         self.help_menu.addAction(f"About {cfet_tcad.__app_name__}",
@@ -162,21 +222,30 @@ class MainWindow(QMainWindow):
         self.menuBar().addMenu(self.help_menu)
 
         # wiring
-        self.config_list.currentTextChanged.connect(self.load_config)
+        self.config_list.itemDoubleClicked.connect(
+            lambda item: self.edit_config(self.config_folder / item.text()))
+        self.config_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.config_list.customContextMenuRequested.connect(self.config_menu)
         self.table.doubleClicked.connect(self.open_result)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.table_menu)
+        self.model.rowsInserted.connect(self._rebuild_action_widgets)
+        self.model.rowsRemoved.connect(self._rebuild_action_widgets)
+        self.model.modelReset.connect(self._rebuild_action_widgets)
         self.queue.log_line.connect(self.log.append)
         self.queue.experiment_changed.connect(self._refresh_status)
+        self.queue.experiment_changed.connect(self._refresh_action_row)
 
         self.populate_configs(self.project_root / "configs")
         self.statusBar().showMessage("ready")
 
     # --- config browsing ------------------------------------------------
 
-    def populate_configs(self, folder: Path) -> None:
+    def populate_configs(self, folder: Path | None = None) -> None:
         self.config_list.clear()
-        self.config_folder = Path(folder)
+        self.config_folder = Path(folder or self.config_folder)
+        self.folder_label.setText(str(self.config_folder))
+        self.folder_label.setToolTip(str(self.config_folder))
         if self.config_folder.is_dir():
             for p in sorted(self.config_folder.glob("*.yaml")):
                 self.config_list.addItem(p.name)
@@ -187,46 +256,90 @@ class MainWindow(QMainWindow):
         if folder:
             self.populate_configs(Path(folder))
 
-    def load_config(self, name: str) -> None:
-        if not name:
+    def config_menu(self, pos) -> None:
+        """Right-click on a YAML: edit / add to experiments / copy /
+        delete."""
+        item = self.config_list.itemAt(pos)
+        if item is None:
+            return
+        path = self.config_folder / item.text()
+        menu = QMenu(self)
+        act_edit = menu.addAction("Edit")
+        act_add = menu.addAction("Add")
+        act_copy = menu.addAction("Copy...")
+        act_delete = menu.addAction("Delete")
+        chosen = menu.exec(self.config_list.viewport().mapToGlobal(pos))
+        if chosen is act_edit:
+            self.edit_config(path)
+        elif chosen is act_add:
+            self.add_config_to_experiments(path)
+        elif chosen is act_copy:
+            self._copy_config_dialog(path)
+        elif chosen is act_delete:
+            self._delete_config_dialog(path)
+
+    def edit_config(self, path: Path) -> None:
+        """Pop up the parameter editor for one YAML (double-click or
+        right-click -> Edit)."""
+        try:
+            dlg = ParamsDialog(path, self)
+        except Exception as exc:  # noqa: BLE001 - malformed YAML etc.
+            QMessageBox.warning(self, "Config error", str(exc))
+            return
+        dlg.saved.connect(lambda _p: self.populate_configs())
+        dlg.exec()
+
+    def add_config_to_experiments(self, path: Path) -> Experiment:
+        """Right-click -> Add: register the YAML as a *pending* experiment
+        (nothing runs until its Run button / Run All)."""
+        tag = path.stem
+        exp = self.queue.make_experiment(tag, path, self._new_out_dir(tag))
+        self.queue.add(exp)
+        return exp
+
+    def copy_config(self, path: Path, new_name: str) -> Path:
+        """Copy a YAML inside the current folder under a new name."""
+        if not new_name.endswith((".yaml", ".yml")):
+            new_name += ".yaml"
+        target = self.config_folder / new_name
+        if target.exists():
+            raise FileExistsError(f"{target.name} already exists")
+        shutil.copyfile(path, target)
+        self.populate_configs()
+        return target
+
+    def delete_config(self, path: Path) -> None:
+        Path(path).unlink()
+        self.populate_configs()
+
+    def _copy_config_dialog(self, path: Path) -> None:
+        name, ok = QInputDialog.getText(self, "Copy config", "Save copy as:",
+                                        text=f"{path.stem}_copy.yaml")
+        if not ok or not name.strip():
             return
         try:
-            self.form.load(self.config_folder / name)
-            self.statusBar().showMessage(f"loaded {name}")
-        except Exception as exc:  # noqa: BLE001 - surface to the user
-            QMessageBox.warning(self, "Config error", str(exc))
+            self.copy_config(path, name.strip())
+        except (FileExistsError, OSError) as exc:
+            QMessageBox.warning(self, "Copy failed", str(exc))
 
-    def _current_config(self) -> Path | None:
-        item = self.config_list.currentItem()
-        return self.config_folder / item.text() if item else None
+    def _delete_config_dialog(self, path: Path) -> None:
+        answer = QMessageBox.question(
+            self, "Delete config",
+            f"Delete {path.name}?  The file is removed from disk.")
+        if answer == QMessageBox.Yes:
+            try:
+                self.delete_config(path)
+            except OSError as exc:
+                QMessageBox.warning(self, "Delete failed", str(exc))
 
     # --- actions -------------------------------------------------------
 
     def _new_out_dir(self, tag: str) -> Path:
         return self.results_root / f"{time.strftime('%H%M%S')}_{tag}"
 
-    def run_current(self) -> None:
-        base = self._current_config()
-        if base is None:
-            QMessageBox.information(self, "Run", "select a config first")
-            return
-        tag = base.stem
-        out = self._new_out_dir(tag)
-        try:
-            out.mkdir(parents=True, exist_ok=True)
-            self.form.save(out / "config.yaml")  # form state, validated
-        except ValueError as exc:
-            QMessageBox.warning(self, "Invalid parameters", str(exc))
-            return
-        exp = self.queue.make_experiment(tag, out / "config.yaml", out)
-        self.queue.enqueue(exp)
-        self.tabs.setCurrentWidget(self.table)
-
-    def run_sweep(self) -> None:
-        base = self._current_config()
-        if base is None:
-            QMessageBox.information(self, "Sweep", "select a config first")
-            return
+    def run_sweep(self, exp: Experiment) -> None:
+        """Per-row Sweep: expand a parameter grid over this experiment's
+        config.  Every point lands as pending - Run All starts them."""
         dlg = SweepDialog(self)
         if dlg.exec() != QDialog.Accepted:
             return
@@ -252,37 +365,29 @@ class MainWindow(QMainWindow):
             return
         self.queue.max_parallel = dlg.jobs.value()
         stamp = time.strftime("%H%M%S")
+        base_tag = exp.name.replace(":", "_")  # keep paths portable
         for i, overrides in enumerate(points):
             tag = "_".join(f"{k.split('.')[-1]}{v}"
                            for k, v in overrides.items())
-            out = self.results_root / f"{stamp}_{base.stem}" / f"p{i:03d}_{tag}"
-            exp = self.queue.make_experiment(f"{base.stem}:{tag}", base, out,
-                                             overrides)
-            self.queue.enqueue(exp)
-        self.tabs.setCurrentWidget(self.table)
+            out = self.results_root / f"{stamp}_{base_tag}" / f"p{i:03d}_{tag}"
+            child = self.queue.make_experiment(f"{exp.name}:{tag}",
+                                               exp.config_path, out,
+                                               overrides)
+            self.queue.add(child)
 
-    def preview_structure(self) -> None:
+    def preview_structure(self, exp: Experiment) -> None:
         """SDE-style preview: mesh + doping export without solving, in a
-        subprocess, then load into the 3D view."""
-        base = self._current_config()
-        if base is None:
-            QMessageBox.information(self, "Structure",
-                                    "select a config first")
-            return
-        out = self._new_out_dir(f"{base.stem}_structure")
-        try:
-            out.mkdir(parents=True, exist_ok=True)
-            self.form.save(out / "config.yaml")
-        except ValueError as exc:
-            QMessageBox.warning(self, "Invalid parameters", str(exc))
-            return
+        subprocess, then load into the 3D view.  Output goes to a
+        structure/ subdir so a later run's vtk/ stays untouched."""
+        out = exp.out_dir / "structure"
+        out.mkdir(parents=True, exist_ok=True)
         from PySide6.QtCore import QProcess
 
         from .run_queue import cli_command
         program, prefix = cli_command()
         proc = QProcess(self)
         proc.setProgram(program)
-        proc.setArguments(prefix + ["structure", str(out / "config.yaml"),
+        proc.setArguments(prefix + ["structure", str(exp.config_path),
                                     "-o", str(out)])
         proc.setProcessChannelMode(QProcess.MergedChannels)
         proc.readyReadStandardOutput.connect(
@@ -299,8 +404,25 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("structure preview failed")
             return
         self.structure.load_dir(out / "vtk")
-        self.tabs.setCurrentWidget(self.structure)
         self.statusBar().showMessage("structure loaded")
+
+    # --- experiments table ----------------------------------------------
+
+    def _rebuild_action_widgets(self, *_args) -> None:
+        """(Re)install the per-row button strips.  Index widgets do not
+        follow rows across inserts/removes, so rebuild them all - row
+        counts are small."""
+        col = COLUMNS.index("Actions")
+        self._action_widgets = []
+        for row, exp in enumerate(self.model.experiments):
+            w = RowActions(exp, self)
+            self.table.setIndexWidget(self.model.index(row, col), w)
+            self._action_widgets.append(w)
+        self.table.resizeColumnToContents(col)
+
+    def _refresh_action_row(self, row: int) -> None:
+        if 0 <= row < len(self._action_widgets):
+            self._action_widgets[row].refresh()
 
     def table_menu(self, pos) -> None:
         """Right-click on an experiment row: stop / remove / open folder."""
@@ -329,7 +451,6 @@ class MainWindow(QMainWindow):
     def open_result(self, index) -> None:
         exp = self.model.experiments[index.row()]
         self.results.load_dir(exp.out_dir)
-        self.tabs.setCurrentWidget(self.results)
         if (exp.out_dir / "vtk").is_dir():
             self.structure.load_dir(exp.out_dir / "vtk")
 
