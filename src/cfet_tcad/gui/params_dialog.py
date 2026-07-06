@@ -28,7 +28,8 @@ class ParamsDialog(QDialog):
         super().__init__(parent)
         self.path = Path(path)
         self.setWindowTitle(f"Parameters - {self.path.name}")
-        self.resize(560, 720)
+        from .widgets import fit_to_screen
+        fit_to_screen(self, 560, 720)
         self.form = ConfigForm()
         self.form.load(self.path)
 

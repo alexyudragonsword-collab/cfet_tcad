@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
-    QLabel,
     QListWidget,
     QMainWindow,
     QMenu,
@@ -51,6 +50,7 @@ from .params_dialog import ParamsDialog
 from .results_view import ResultsView
 from .run_queue import RunQueue
 from .structure_view import StructureView
+from .widgets import ElidedLabel
 
 
 class SweepDialog(QDialog):
@@ -141,12 +141,22 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
         self.setWindowIcon(app_icon())
-        self.resize(1280, 800)
+        # size to the actual display instead of a fixed 1280x800: ~85%
+        # of the available area, centered (fallback for headless tests)
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            self.resize(int(avail.width() * 0.85),
+                        int(avail.height() * 0.85))
+            self.move(avail.center() - self.rect().center())
+        else:  # pragma: no cover - no-screen environments
+            self.resize(1280, 800)
+        self._layout_initialized = False
         self.project_root = Path(project_root or Path.cwd())
         self.results_root = self.project_root / "results" / "gui"
 
         # widgets
-        self.folder_label = QLabel()
+        self.folder_label = ElidedLabel()
         self.folder_label.setStyleSheet("padding: 2px; color: #444;")
         self.config_list = QListWidget()
         self.model = ExperimentModel(self)
@@ -185,21 +195,18 @@ class MainWindow(QMainWindow):
         self.center_split.addWidget(self.bottom_split)
         self.center_split.setStretchFactor(0, 1)  # experiments: ~1/3
         self.center_split.setStretchFactor(1, 2)
-        # initial split: size hints would squeeze the table to a couple of
-        # rows; hand the splitter an explicit 1/3 : 2/3 starting ratio
-        self.center_split.setSizes([220, 440])
 
-        hsplit = QSplitter(Qt.Horizontal)
-        hsplit.addWidget(left)
-        hsplit.addWidget(self.center_split)
-        hsplit.setStretchFactor(0, 1)
-        hsplit.setStretchFactor(1, 4)
-        vsplit = QSplitter(Qt.Vertical)
-        vsplit.addWidget(hsplit)
-        vsplit.addWidget(self.log)
-        vsplit.setStretchFactor(0, 4)
-        vsplit.setStretchFactor(1, 1)
-        self.setCentralWidget(vsplit)
+        self.hsplit = QSplitter(Qt.Horizontal)
+        self.hsplit.addWidget(left)
+        self.hsplit.addWidget(self.center_split)
+        self.hsplit.setStretchFactor(0, 1)
+        self.hsplit.setStretchFactor(1, 4)
+        self.vsplit = QSplitter(Qt.Vertical)
+        self.vsplit.addWidget(self.hsplit)
+        self.vsplit.addWidget(self.log)
+        self.vsplit.setStretchFactor(0, 4)
+        self.vsplit.setStretchFactor(1, 1)
+        self.setCentralWidget(self.vsplit)
 
         # toolbar: whole-queue controls (per-row buttons drive one row)
         self.toolbar = QToolBar("main")
@@ -238,6 +245,24 @@ class MainWindow(QMainWindow):
 
         self.populate_configs(self.project_root / "configs")
         self.statusBar().showMessage("ready")
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """First show: distribute the splitters proportionally to the
+        real window size.  Size hints are resolution-blind (a long path
+        or a plot's minimum would dictate the layout); fixed pixels
+        would only fit the display they were tuned on.  Later resizes
+        and user drags are governed by the stretch factors as usual."""
+        super().showEvent(event)
+        if self._layout_initialized:
+            return
+        self._layout_initialized = True
+        w, h = self.vsplit.width(), self.vsplit.height()
+        self.vsplit.setSizes([int(h * 0.78), h - int(h * 0.78)])
+        self.hsplit.setSizes([int(w * 0.16), w - int(w * 0.16)])
+        ch = self.center_split.height()
+        self.center_split.setSizes([ch // 3, ch - ch // 3])
+        bw = self.bottom_split.width()
+        self.bottom_split.setSizes([bw // 2, bw - bw // 2])
 
     # --- config browsing ------------------------------------------------
 

@@ -50,15 +50,18 @@ class StructureView(QWidget):
             self.plotter = None
             return
 
+        from .widgets import ElidedLabel
+
         self.field_box = QComboBox()
         self.field_box.addItem("Structure")
         self.clip_box = QCheckBox("clip open")
         self.snap_box = QComboBox()  # bias-point snapshots
-        self.title = QLabel("no structure loaded")
+        # elided: a full results-directory path in a plain QLabel would
+        # dictate the whole pane's minimum width
+        self.title = ElidedLabel("no structure loaded")
         bar = QHBoxLayout()
         bar.setContentsMargins(4, 4, 4, 0)
-        bar.addWidget(self.title)
-        bar.addStretch(1)
+        bar.addWidget(self.title, stretch=1)
         bar.addWidget(QLabel("snapshot"))
         bar.addWidget(self.snap_box)
         bar.addWidget(QLabel("field"))

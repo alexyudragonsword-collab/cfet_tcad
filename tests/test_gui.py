@@ -356,6 +356,52 @@ def test_params_dialog_save_and_save_as(qapp, tmp_path, monkeypatch):
     assert path.read_text() == before
 
 
+def test_elided_labels_do_not_pin_pane_widths(qapp, tmp_path):
+    from cfet_tcad.gui.structure_view import NO_3D_ENV
+    from cfet_tcad.gui.widgets import ElidedLabel
+
+    import os
+    os.environ.pop(NO_3D_ENV, None)  # want the full widget path if viz
+    from cfet_tcad.gui.main_window import MainWindow
+
+    deep = tmp_path.joinpath(*(["very_long_directory_name"] * 6))
+    (deep / "configs").mkdir(parents=True)
+    win = MainWindow(project_root=deep)
+    # the folder label shows the (long) path but never demands its width
+    assert isinstance(win.folder_label, ElidedLabel)
+    assert str(deep) in win.folder_label.text()
+    assert win.folder_label.minimumSizeHint().width() < 80
+    assert win.folder_label.toolTip() == win.folder_label.text()
+    # Structure 3D's title label has the same guarantee
+    if win.structure.plotter is not None:
+        assert isinstance(win.structure.title, ElidedLabel)
+        win.structure.title.setText(str(deep / "results" / "vtk"))
+        assert win.structure.title.minimumSizeHint().width() < 80
+    win.close()
+
+
+def test_layout_adapts_to_window_size(qapp, tmp_path):
+    from cfet_tcad.gui.main_window import MainWindow
+
+    win = MainWindow(project_root=tmp_path)
+    # window sized from the screen, never past its available area
+    avail = win.screen().availableGeometry()
+    assert win.width() <= avail.width() and win.height() <= avail.height()
+    win.resize(1600, 1000)  # pretend a large display
+    win.show()
+    qapp.processEvents()
+    # first show distributes proportionally: experiments ~1/3 of the
+    # center, config browser a modest fraction of the width
+    top, bottom = win.center_split.sizes()
+    assert 0.2 < top / (top + bottom) < 0.45
+    left, right = win.hsplit.sizes()
+    assert left / (left + right) <= 0.25
+    # the left pane can be dragged much narrower than any path text
+    win.hsplit.setSizes([60, left + right - 60])
+    assert win.hsplit.sizes()[0] < 120
+    win.close()
+
+
 def test_structure_view_respects_no3d_gate(qapp, monkeypatch):
     from cfet_tcad.gui.structure_view import NO_3D_ENV, StructureView
 

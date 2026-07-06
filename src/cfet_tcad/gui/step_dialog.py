@@ -65,7 +65,8 @@ class StepConvertDialog(QDialog):
         super().__init__(parent)
         self.step_path = Path(step_path)
         self.setWindowTitle(f"Convert {self.step_path.name} to mesh")
-        self.resize(720, 640)
+        from .widgets import fit_to_screen
+        fit_to_screen(self, 720, 640)
 
         self.editor = QPlainTextEdit()
         self.editor.setFont(QFont("monospace"))
