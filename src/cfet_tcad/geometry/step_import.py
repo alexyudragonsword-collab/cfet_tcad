@@ -74,6 +74,32 @@ def discover_step(step_path: Path) -> list[VolumeInfo]:
         gmsh.finalize()
 
 
+def _boxes(name: str, value) -> list[list[float]]:
+    """Normalize a bbox selector: one box (6 numbers) or a list of
+    boxes whose matches are united - contacts like a GAA gate need
+    several thin slabs to pick the shell's lateral faces without the
+    axial end rings."""
+    if value and isinstance(value[0], (list, tuple)):
+        boxes = [[float(x) for x in b] for b in value]
+    else:
+        boxes = [[float(x) for x in value]]
+    for b in boxes:
+        if len(b) != 6:
+            raise ValueError(f"'{name}': every bbox needs 6 numbers "
+                             f"[x0,y0,z0,x1,y1,z1], got {len(b)}")
+    return boxes
+
+
+def _tags_in_boxes(boxes: list[list[float]], eps: float,
+                    dim: int) -> set[int]:
+    found: set[int] = set()
+    for b in boxes:
+        found |= {t for _d, t in gmsh.model.getEntitiesInBoundingBox(
+            b[0] - eps, b[1] - eps, b[2] - eps,
+            b[3] + eps, b[4] + eps, b[5] + eps, dim=dim)}
+    return found
+
+
 def _bbox_tolerance(bbox: tuple) -> float:
     """Selector boxes are typed by hand: pad them by a small fraction of
     the model diagonal so exact-face coordinates are caught reliably."""
@@ -103,14 +129,8 @@ def _select_volumes(name: str, select: dict, volumes: list[VolumeInfo],
                              f"exist; volumes are:\n{_volume_table(volumes)}")
         tags = wanted
     elif kind == "bbox":
-        box = [float(x) for x in value]
-        if len(box) != 6:
-            raise ValueError(f"region '{name}': bbox needs 6 numbers "
-                             f"[x0,y0,z0,x1,y1,z1], got {len(box)}")
-        found = gmsh.model.getEntitiesInBoundingBox(
-            box[0] - eps, box[1] - eps, box[2] - eps,
-            box[3] + eps, box[4] + eps, box[5] + eps, dim=3)
-        tags = [t for _d, t in found]
+        tags = sorted(_tags_in_boxes(_boxes(f"region {name}", value),
+                                      eps, dim=3))
     else:
         raise ValueError(f"region '{name}': unknown selector '{kind}' "
                          f"(use label / volume / bbox)")
@@ -204,7 +224,11 @@ def convert_step(spec: dict, spec_dir: Path, out_msh: Path) -> dict:
             gmsh.model.addPhysicalGroup(3, tags, name=name)
 
         # contacts: bbox surface selectors, restricted to faces that
-        # actually bound the declared owner region
+        # actually bound the declared owner region AND are exterior -
+        # faces shared with another region are interfaces, and a bbox
+        # around a whole gate-oxide shell must not swallow the
+        # silicon-oxide interface underneath it
+        boundaries = {r: _region_boundary(t) for r, t in region_tags.items()}
         for name, cspec in contacts_spec.items():
             owner = cspec.get("region")
             if owner not in region_tags:
@@ -214,17 +238,14 @@ def convert_step(spec: dict, spec_dir: Path, out_msh: Path) -> dict:
             if list(select) != ["bbox"]:
                 raise ValueError(f"contact '{name}': contacts support the "
                                  f"bbox selector only, got {select!r}")
-            box = [float(x) for x in select["bbox"]]
-            if len(box) != 6:
-                raise ValueError(f"contact '{name}': bbox needs 6 numbers")
-            found = gmsh.model.getEntitiesInBoundingBox(
-                box[0] - eps, box[1] - eps, box[2] - eps,
-                box[3] + eps, box[4] + eps, box[5] + eps, dim=2)
-            owner_faces = _region_boundary(region_tags[owner])
-            faces = [t for _d, t in found if t in owner_faces]
+            boxes = _boxes(f"contact {name}", select["bbox"])
+            found = _tags_in_boxes(boxes, eps, dim=2)
+            shared = set().union(*(b for r, b in boundaries.items()
+                                   if r != owner))
+            faces = sorted(found & (boundaries[owner] - shared))
             if not faces:
                 raise ValueError(
-                    f"contact '{name}': bbox {box} matched no face of "
+                    f"contact '{name}': bbox {boxes} matched no face of "
                     f"region '{owner}' (tolerance {eps:.3g}); check the "
                     f"coordinates against the volume table:\n"
                     f"{_volume_table(volumes)}")
@@ -240,8 +261,7 @@ def convert_step(spec: dict, spec_dir: Path, out_msh: Path) -> dict:
                 if r not in region_tags:
                     raise ValueError(f"interface '{name}': region '{r}' is "
                                      f"not defined in regions")
-            shared = sorted(_region_boundary(region_tags[a])
-                            & _region_boundary(region_tags[b]))
+            shared = sorted(boundaries[a] & boundaries[b])
             if not shared:
                 raise ValueError(
                     f"interface '{name}': regions '{a}' and '{b}' share no "

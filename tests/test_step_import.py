@@ -8,6 +8,8 @@ no-useful-names case the discovery-table workflow is designed for; the
 label-regex selector is exercised against those real labels.
 """
 
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -126,6 +128,60 @@ def test_selector_and_mapping_errors(step_file, tmp_path):
     del spec["unit_cm"]
     with pytest.raises(ValueError, match="unit_cm"):
         convert_step(spec, step_file.parent, msh)
+
+
+def test_fig4_demo_generator_converts_cleanly(tmp_path):
+    """The shipped paper-Fig.4 FBC example: generator -> spec ->
+    conversion, with the gate contact NOT swallowing the Si-SiO2
+    interface faces (contacts are exterior-only)."""
+    import sys
+    sys.path.insert(0, "examples")
+    try:
+        from make_paper_fig4_step import build_step, import_spec
+    finally:
+        sys.path.pop(0)
+
+    step = tmp_path / "demo.step"
+    build_step(step)
+    spec = import_spec(step.name)
+    msh = tmp_path / "demo.msh"
+    summary = convert_step(spec, tmp_path, msh)
+    # two fins / two shells per device, all claimed
+    assert summary["regions"] == {"silicon_n": 2, "oxide_n": 2,
+                                  "silicon_p": 2, "oxide_p": 2}
+    names = read_msh_physical_names(msh)
+    for group in ("silicon_n", "oxide_n", "silicon_p", "oxide_p",
+                  "source_n", "drain_n", "gate_n", "source_p", "drain_p",
+                  "gate_p", "si_ox_n", "si_ox_p"):
+        assert group in names
+
+    # exterior filter: no mesh face may be tagged both gate and
+    # interface (count element lines per 2D physical group in the MSH)
+    import gmsh
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.open(str(msh))
+        groups = {gmsh.model.getPhysicalName(d, t): (d, t)
+                  for d, t in gmsh.model.getPhysicalGroups(2)}
+        def faces(name):
+            d, t = groups[name]
+            out = set()
+            for e in gmsh.model.getEntitiesForPhysicalGroup(d, t):
+                out.add(e)
+            return out
+        assert faces("gate_n") and faces("si_ox_n")
+        assert not faces("gate_n") & faces("si_ox_n")
+        assert not faces("gate_p") & faces("si_ox_p")
+    finally:
+        gmsh.finalize()
+
+    # the shipped copies in configs/ stay in sync with the generator
+    shipped = Path("configs/paper_fbc_cfet_demo_import.yaml")
+    if shipped.exists():
+        import yaml as _yaml
+        on_disk = _yaml.safe_load(shipped.read_text(encoding="utf-8"))
+        assert on_disk == import_spec("paper_fbc_cfet_demo.step")
 
 
 @pytest.mark.slow
