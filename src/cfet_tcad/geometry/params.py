@@ -58,8 +58,20 @@ class DeviceParams:
     t_gap_nm: float = 10.0
 
     # current scaling: effective width = sheet width x number of sheets
+    # (an ideal parallel multiplier - no extra geometry is meshed)
     sheet_width_nm: float = 20.0
     n_sheets: int = 1
+
+    # geometric channel replication per device (cfet_3d only): real
+    # meshed copies, unlike the n_sheets multiplier above.  n_fins
+    # places copies side by side along z (paper-style fin arrays,
+    # center-to-center fin_pitch); n_stacked_sheets stacks copies
+    # vertically within each device (multi-nanosheet stacks,
+    # center-to-center sheet_pitch)
+    n_fins: int = 1
+    fin_pitch_nm: float = 26.0
+    n_stacked_sheets: int = 1
+    sheet_pitch_nm: float = 15.0
 
     def __post_init__(self):
         if self.polarity not in ("n", "p"):
@@ -73,7 +85,31 @@ class DeviceParams:
                      "sheet_width_nm"):
             if getattr(self, attr) <= 0:
                 raise ValueError(f"{attr} must be positive")
+        self._validate_replication()
         self._validate_external()
+
+    def _validate_replication(self) -> None:
+        if self.n_fins < 1 or self.n_stacked_sheets < 1:
+            raise ValueError("n_fins and n_stacked_sheets must be >= 1")
+        if (self.n_fins > 1 or self.n_stacked_sheets > 1) \
+                and self.structure != "cfet_3d":
+            raise ValueError(
+                "geometric channel replication (n_fins/n_stacked_sheets"
+                " > 1) is only implemented for structure: cfet_3d")
+        if self.n_fins > 1 and \
+                self.fin_pitch_nm < self.sheet_width_nm + 2 * self.t_ox_nm:
+            raise ValueError(
+                f"fin_pitch_nm ({self.fin_pitch_nm}) must be >= "
+                f"sheet_width_nm + 2*t_ox_nm "
+                f"({self.sheet_width_nm + 2 * self.t_ox_nm}) or the "
+                f"oxide shells overlap")
+        if self.n_stacked_sheets > 1 and \
+                self.sheet_pitch_nm < self.t_si_nm + 2 * self.t_ox_nm:
+            raise ValueError(
+                f"sheet_pitch_nm ({self.sheet_pitch_nm}) must be >= "
+                f"t_si_nm + 2*t_ox_nm "
+                f"({self.t_si_nm + 2 * self.t_ox_nm}) or the oxide "
+                f"shells overlap")
 
     def _validate_external(self) -> None:
         if self.structure != "external":
@@ -147,6 +183,14 @@ class DeviceParams:
     @property
     def l_total(self) -> float:
         return 2.0 * self.l_sd + self.l_gate
+
+    @property
+    def fin_pitch(self) -> float:
+        return self.fin_pitch_nm * NM_TO_CM
+
+    @property
+    def sheet_pitch(self) -> float:
+        return self.sheet_pitch_nm * NM_TO_CM
 
     @property
     def width_cm(self) -> float:

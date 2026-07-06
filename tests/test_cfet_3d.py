@@ -46,6 +46,59 @@ def test_sheets_are_vertically_separated(built, fresh_devsim):
     assert gap == pytest.approx(expected, rel=1e-6)
 
 
+def test_replication_validation():
+    with pytest.raises(ValueError, match="only implemented"):
+        DeviceParams(structure="gaa_3d", n_fins=2)
+    with pytest.raises(ValueError, match="oxide shells overlap"):
+        DeviceParams(structure="cfet_3d", n_fins=2, fin_pitch_nm=10.0,
+                     sheet_width_nm=18.0)
+    with pytest.raises(ValueError, match="oxide shells overlap"):
+        DeviceParams(structure="cfet_3d", n_stacked_sheets=2,
+                     sheet_pitch_nm=5.0)
+    with pytest.raises(ValueError, match=">= 1"):
+        DeviceParams(structure="cfet_3d", n_fins=0)
+
+
+def _drain_current_at_bias(devsim, msh, layout, name):
+    """Equilibrium + a small common-gate/drain step; nFET drain current."""
+    from cfet_tcad.solve import ramp_biases
+    from cfet_tcad.solve.sweep import contact_current
+
+    device = load_mesh(msh, layout, name)
+    setup_equilibrium(device, layout,
+                      DeviceParams(name=name, structure="cfet_3d"))
+    ramp_biases(device, ["drain_n"], 0.3, step=0.1)
+    ramp_biases(device, ["gate_n", "gate_p"], 0.3, step=0.1)
+    return contact_current(device, "drain_n")
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("replication", [dict(n_fins=2, fin_pitch_nm=26.0),
+                                         dict(n_stacked_sheets=2,
+                                              sheet_pitch_nm=15.0)])
+def test_replicated_channels_carry_exactly_double_current(
+        tmp_path, fresh_devsim, replication):
+    """Replicas are disconnected identical copies, so the device current
+    must be exactly 2x the single-channel device - this also proves
+    DEVSIM handles a region of disconnected components correctly."""
+    devsim = fresh_devsim
+    single = DeviceParams(name="one", structure="cfet_3d")
+    double = DeviceParams(name="two", structure="cfet_3d", **replication)
+
+    msh1 = tmp_path / "one.msh"
+    lay1 = CFETStack3DBuilder(single, COARSE).build(msh1)
+    i1 = _drain_current_at_bias(devsim, msh1, lay1, "one")
+
+    import cfet_tcad
+    cfet_tcad.reset()
+    msh2 = tmp_path / "two.msh"
+    lay2 = CFETStack3DBuilder(double, COARSE).build(msh2)
+    assert set(lay2.regions) == set(lay1.regions)  # contract unchanged
+    i2 = _drain_current_at_bias(devsim, msh2, lay2, "two")
+
+    assert i2 == pytest.approx(2.0 * i1, rel=1e-6)
+
+
 def test_coupled_equilibrium_converges_3d(tmp_path, fresh_devsim):
     devsim = fresh_devsim
     msh = tmp_path / "cfet.msh"

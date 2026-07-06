@@ -160,6 +160,19 @@ or a material-colored OBJ+MTL for CAD and presentation tools. Simulation
 results always land as CSV, fom.json, VTK (VisIt/ParaView), and the gmsh
 .msh alongside.</p>
 
+<p><b>Multi-channel replication</b> (cfet_3d): <code>n_fins</code> /
+<code>fin_pitch_nm</code> mesh several fins side by side per device
+(paper-style fin arrays); <code>n_stacked_sheets</code> /
+<code>sheet_pitch_nm</code> stack several nanosheets vertically. Replicas
+share the device's regions and contacts, so everything downstream works
+unchanged. <code>n_sheets</code> stays a pure current multiplier (no
+geometry).</p>
+
+<p><b>ParaView:</b> open <code>vtk/*.pvd</code> directly (timesteps =
+bias values animate the sweep); the repo ships
+<code>examples/paraview_macro_fig8.py</code>, a one-click macro for a
+clipped, mobility-colored view with optional OSPRay ray tracing.</p>
+
 <hr>
 <h2>5. Physics models</h2>
 
