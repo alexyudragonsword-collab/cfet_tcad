@@ -170,6 +170,23 @@ device:
       bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
 </pre>
 
+<p><b>STEP (CAD) import.</b> A <code>.step</code>/<code>.stp</code>
+assembly can be converted into a simulation-ready mesh: STEP files carry
+geometry only, so a small mapping spec assigns every solid to a region
+(selector: <code>label</code> regex on the CAD part name,
+<code>volume</code> tag, or <code>bbox</code>), places the contacts
+(bbox), and sets <code>unit_cm</code> (1 CAD unit in cm &mdash; nm:
+1e-7, &micro;m: 1e-4, mm: 0.1). In the GUI, .step files appear in the
+config browser; double-click (or right-click &rarr; <b>Convert to
+mesh&hellip;</b>) opens a dialog prefilled with the file's volume table
+and a spec template &mdash; <b>Convert</b> writes the .msh plus a
+runnable starter config. On the command line:
+<code>cfet-tcad import-step model.step --list</code> prints the volume
+table, <code>cfet-tcad import-step spec.yaml</code> converts. Solids are
+boolean-fragmented so touching regions mesh conformally, and meshing
+happens in CAD coordinates (the finished mesh is scaled to cm), keeping
+nm-scale features clear of the CAD kernel's tolerance.</p>
+
 <p><b>Design export.</b> The Structure 3D tab's <b>Export&hellip;</b>
 button (or <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj
 dev.obj</code>) writes the device geometry as STL/PLY/VTP surface meshes

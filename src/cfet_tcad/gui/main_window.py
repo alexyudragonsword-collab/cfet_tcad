@@ -247,8 +247,10 @@ class MainWindow(QMainWindow):
         self.folder_label.setText(str(self.config_folder))
         self.folder_label.setToolTip(str(self.config_folder))
         if self.config_folder.is_dir():
-            for p in sorted(self.config_folder.glob("*.yaml")):
-                self.config_list.addItem(p.name)
+            names = [p.name for pattern in ("*.yaml", "*.step", "*.stp")
+                     for p in self.config_folder.glob(pattern)]
+            for name in sorted(names):
+                self.config_list.addItem(name)
 
     def pick_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Config folder",
@@ -264,6 +266,15 @@ class MainWindow(QMainWindow):
             return
         path = self.config_folder / item.text()
         menu = QMenu(self)
+        if path.suffix.lower() in (".step", ".stp"):
+            act_convert = menu.addAction("Convert to mesh...")
+            act_volumes = menu.addAction("List volumes")
+            chosen = menu.exec(self.config_list.viewport().mapToGlobal(pos))
+            if chosen is act_convert:
+                self.open_step_dialog(path)
+            elif chosen is act_volumes:
+                self.list_step_volumes(path)
+            return
         act_edit = menu.addAction("Edit")
         act_add = menu.addAction("Add")
         act_copy = menu.addAction("Copy...")
@@ -280,7 +291,10 @@ class MainWindow(QMainWindow):
 
     def edit_config(self, path: Path) -> None:
         """Pop up the parameter editor for one YAML (double-click or
-        right-click -> Edit)."""
+        right-click -> Edit); .step files open the conversion dialog."""
+        if path.suffix.lower() in (".step", ".stp"):
+            self.open_step_dialog(path)
+            return
         try:
             dlg = ParamsDialog(path, self)
         except Exception as exc:  # noqa: BLE001 - malformed YAML etc.
@@ -288,6 +302,59 @@ class MainWindow(QMainWindow):
             return
         dlg.saved.connect(lambda _p: self.populate_configs())
         dlg.exec()
+
+    def open_step_dialog(self, path: Path) -> None:
+        """STEP conversion dialog: volume table + editable mapping spec."""
+        from .step_dialog import StepConvertDialog
+        try:
+            dlg = StepConvertDialog(path, self)
+        except Exception as exc:  # noqa: BLE001 - unreadable STEP etc.
+            QMessageBox.warning(self, "STEP error", str(exc))
+            return
+        dlg.convert_requested.connect(self.convert_step_file)
+        dlg.exec()
+
+    def convert_step_file(self, spec_path: Path) -> None:
+        """Run the CLI converter in a subprocess (a meshing crash must
+        never take the GUI down); refresh the browser on success."""
+        from PySide6.QtCore import QProcess
+
+        from .run_queue import cli_command
+        spec_path = Path(spec_path)
+        out_msh = spec_path.with_name(
+            spec_path.stem.removesuffix("_import") + ".msh")
+        program, prefix = cli_command()
+        proc = QProcess(self)
+        proc.setProgram(program)
+        proc.setArguments(prefix + ["import-step", str(spec_path),
+                                    "-o", str(out_msh)])
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyReadStandardOutput.connect(
+            lambda: [self.log.append(f"[import-step] {ln}") for ln in
+                     bytes(proc.readAllStandardOutput()).decode(
+                         errors="replace").splitlines()])
+        proc.finished.connect(lambda code, _s: self._step_converted(code))
+        self.statusBar().showMessage("converting STEP to mesh...")
+        proc.start()
+
+    def _step_converted(self, exit_code: int) -> None:
+        if exit_code != 0:
+            self.statusBar().showMessage(
+                "STEP conversion failed (see log)")
+            return
+        self.populate_configs()  # the starter YAML appears in the list
+        self.statusBar().showMessage(
+            "STEP converted - starter config added to the list")
+
+    def list_step_volumes(self, path: Path) -> None:
+        from ..geometry.step_import import _volume_table, discover_step
+        try:
+            table = _volume_table(discover_step(path))
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "STEP error", str(exc))
+            return
+        for line in f"volumes in {path.name}:\n{table}".splitlines():
+            self.log.append(line)
 
     def add_config_to_experiments(self, path: Path) -> Experiment:
         """Right-click -> Add: register the YAML as a *pending* experiment

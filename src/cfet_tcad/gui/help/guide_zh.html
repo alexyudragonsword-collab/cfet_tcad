@@ -152,6 +152,20 @@ device:
       bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
 </pre>
 
+<p><b>STEP(CAD)导入。</b><code>.step</code>/<code>.stp</code> 装配体
+可转换为可仿真网格:STEP 只有几何,所以需要一份小的映射 spec——给每个
+实体指定 region(选择器三选一:<code>label</code> 对 CAD 零件名做正则、
+<code>volume</code> 体编号、<code>bbox</code> 包围盒)、用 bbox 放置
+contacts、并给出 <code>unit_cm</code>(1 个 CAD 单位等于多少 cm:nm 为
+1e-7、&micro;m 为 1e-4、mm 为 0.1)。GUI 里 .step 文件直接出现在左侧
+文件列表,双击(或右键 &rarr; <b>Convert to mesh&hellip;</b>)弹出
+预填了体对照表和 spec 模板的对话框,<b>Convert</b> 生成 .msh 与一份
+可直接跑的 starter 配置。命令行:<code>cfet-tcad import-step
+model.step --list</code> 打印体对照表,<code>cfet-tcad import-step
+spec.yaml</code> 执行转换。所有实体先做布尔碎片化保证相邻区域共形
+划网,且划网在 CAD 原生坐标进行、成网后再缩放到 cm——纳米尺寸不会
+撞上 CAD 内核的几何容差。</p>
+
 <p><b>设计导出。</b>Structure 3D 标签页的 <b>Export&hellip;</b> 按钮
 （或 <code>cfet-tcad structure cfg.yaml --stl dev.stl --obj
 dev.obj</code>）把器件几何导出为 STL/PLY/VTP 表面网格,或带材质颜色的

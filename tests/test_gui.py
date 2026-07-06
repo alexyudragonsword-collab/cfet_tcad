@@ -284,6 +284,41 @@ def test_config_file_operations(qapp, tmp_path):
     win.close()
 
 
+def test_step_files_listed_and_dialog_template(qapp, tmp_path):
+    gmsh = pytest.importorskip("gmsh")
+
+    from cfet_tcad.gui.main_window import MainWindow
+    from cfet_tcad.gui.step_dialog import StepConvertDialog
+
+    win = MainWindow(project_root=tmp_path)
+    win.config_folder.mkdir(parents=True, exist_ok=True)
+    step = win.config_folder / "cad.step"
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("t")
+        gmsh.model.occ.addBox(0, 0, 0, 10, 5, 3)
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(step))
+    finally:
+        gmsh.finalize()
+    win.populate_configs()
+    assert [win.config_list.item(i).text()
+            for i in range(win.config_list.count())] == ["cad.step"]
+
+    dlg = StepConvertDialog(step)
+    text = dlg.editor.toPlainText()
+    # the discovered volume table and the spec skeleton are prefilled
+    assert "step_file: cad.step" in text
+    assert "unit_cm" in text and "tag" in text
+    assert dlg.spec_path.name == "cad_import.yaml"
+    fired: list = []
+    dlg.convert_requested.connect(fired.append)
+    dlg._convert()
+    assert dlg.spec_path.exists() and fired == [dlg.spec_path]
+    win.close()
+
+
 def test_params_dialog_save_and_save_as(qapp, tmp_path, monkeypatch):
     from cfet_tcad.gui.params_dialog import ParamsDialog
 

@@ -42,6 +42,20 @@ def main(argv=None) -> int:
         help="print an environment self-diagnosis (report this output "
              "when the app fails to start)")
 
+    step_p = sub.add_parser(
+        "import-step",
+        help="convert a CAD .step assembly to a simulation-ready MSH 2.2 "
+             "mesh (plus a starter external config)")
+    step_p.add_argument("spec", type=Path,
+                        help="mapping spec YAML (step_file, unit_cm, "
+                             "regions/contacts/interfaces), or the .step "
+                             "itself when using --list")
+    step_p.add_argument("-o", "--output", type=Path, default=None,
+                        help="output .msh path (default: next to the spec)")
+    step_p.add_argument("--list", action="store_true", dest="list_only",
+                        help="only print the volume table (tag / CAD label "
+                             "/ bbox) to write the spec against")
+
     sweep_p = sub.add_parser(
         "sweep", help="parametric sweep: one process per point")
     sweep_p.add_argument("config", type=Path)
@@ -67,6 +81,36 @@ def main(argv=None) -> int:
     if args.command == "doctor":
         from .doctor import run_doctor
         return run_doctor()
+
+    if args.command == "import-step":
+        import yaml
+
+        from ..geometry.step_import import (
+            _volume_table, convert_step, discover_step,
+            starter_external_config)
+        if args.list_only:
+            # accept either the spec or the .step directly for discovery
+            if args.spec.suffix.lower() in (".step", ".stp"):
+                step = args.spec
+            else:
+                raw = yaml.safe_load(args.spec.read_text(encoding="utf-8"))
+                step = args.spec.parent / raw["step_file"]
+            print(_volume_table(discover_step(step)))
+            return 0
+        spec = yaml.safe_load(args.spec.read_text(encoding="utf-8")) or {}
+        out = Path(args.output or args.spec.with_suffix(".msh"))
+        summary = convert_step(spec, args.spec.parent, out)
+        # "_run" suffix: never collides with the spec YAML itself
+        cfg_path = out.with_name(f"{out.stem}_run.yaml")
+        cfg_path.write_text(
+            yaml.safe_dump(starter_external_config(spec, out),
+                           sort_keys=False), encoding="utf-8")
+        print(f"mesh written: {out} ({summary['nodes']} nodes)")
+        for kind in ("regions", "contacts", "interfaces"):
+            print(f"  {kind}: {summary[kind]}")
+        print(f"starter config: {cfg_path} (tune doping / workfunctions / "
+              f"biases, then: cfet-tcad run {cfg_path.name})")
+        return 0
 
     if args.command == "sweep":
         from .config import load_config
