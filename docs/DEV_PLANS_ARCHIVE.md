@@ -1086,8 +1086,11 @@ mesh 一个沟道体,n_sheets 仅是电流乘数;渲染端按 region 工作,buil
 
 实现落地于提交 `21076d9`:默认路径网格 MD5 与旧 builder 逐字节一致;
 双 fin 与双叠层电流均精确 = 2×单沟道(rel <1e-6),不连通 region 求解
-正确性同时得证;测试套 94。真实 2-fin/2-sheet 几何的 Fig4/8/9 重渲染
-随 lombardi 重跑完成后交付(见 PROJECT_DEV_PLAN 待办)。
+正确性同时得证;测试套 94。真实 2-fin/2-sheet 几何的 Fig4/8/9 已随
+lombardi 双沟道重跑完成交付:FBC 面板显示两个并排 fin、SBC 显示两个
+叠层 sheet,与论文 Fig.4 截图一致。重渲染暴露了图脚本的一个几何 bug
+——原 cutaway 在器件全域 mid-z 单平面裁剪,会把整个第二个 fin 裁掉;
+改为按连通体各自 mid-z 裁剪(`_clip_open`),单沟道行为不变。
 
 ---
 

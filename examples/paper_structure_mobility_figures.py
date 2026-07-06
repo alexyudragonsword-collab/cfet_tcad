@@ -64,6 +64,19 @@ def _own_oxide(oxides, region):
               key=lambda o: abs((o.bounds[2] + o.bounds[3]) / 2 - y_mid))
 
 
+def _clip_open(region):
+    """Cutaway that survives channel replication: clip every connected
+    body at its *own* mid-z plane. A single global mid-plane clip works
+    for one channel but deletes replicated fins/sheets that lie entirely
+    on the far side of the device-wide midpoint."""
+    import pyvista as pv
+    out = pv.MultiBlock()
+    for body in region.split_bodies():
+        z_mid = (body.bounds[4] + body.bounds[5]) / 2
+        out.append(body.clip(normal="z", origin=[0, 0, z_mid]))
+    return out.combine()
+
+
 def _iso_camera(bounds, zoom=1.3):
     c = [(bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2,
         (bounds[4] + bounds[5]) / 2]
@@ -107,14 +120,12 @@ def main(argv=None) -> int:
     for i, cfg in enumerate(CONFIGS):
         p.subplot(0, i)
         bounds = device_bounds[cfg]
-        z_mid = (bounds[4] + bounds[5]) / 2
         for region in (nfet[cfg], pfet[cfg]):
-            clipped = region.clip(normal="z", origin=[0, 0, z_mid])
-            p.add_mesh(clipped, color=SILICON_COLOR, smooth_shading=True,
-                      specular=0.4, specular_power=20, show_edges=False)
+            p.add_mesh(_clip_open(region), color=SILICON_COLOR,
+                      smooth_shading=True, specular=0.4, specular_power=20,
+                      show_edges=False)
         for ox in oxides[cfg]:
-            clipped = ox.clip(normal="z", origin=[0, 0, z_mid])
-            p.add_mesh(clipped, color=OXIDE_COLOR, opacity=0.55,
+            p.add_mesh(_clip_open(ox), color=OXIDE_COLOR, opacity=0.55,
                       smooth_shading=True, show_edges=False)
         p.add_text(f"{LABELS[cfg]}  -  channel {ORIENTATION[cfg]} surface",
                   font_size=13, color="black")
@@ -138,14 +149,11 @@ def main(argv=None) -> int:
         # is a single-device eMobility plot, not the whole CFET stack
         n_region = nfet[cfg]
         n_oxide = _own_oxide(oxides[cfg], n_region)
-        z_mid = (n_region.bounds[4] + n_region.bounds[5]) / 2
-        clipped = n_region.clip(normal="z", origin=[0, 0, z_mid])
-        p.add_mesh(clipped, scalars="mu_n_cvt", cmap=CMAP, clim=clim,
-                  smooth_shading=True, show_edges=False,
+        p.add_mesh(_clip_open(n_region), scalars="mu_n_cvt", cmap=CMAP,
+                  clim=clim, smooth_shading=True, show_edges=False,
                   scalar_bar_args={"title": "eMobility [cm2/Vs]",
                                   "color": "black"})
-        oclip = n_oxide.clip(normal="z", origin=[0, 0, z_mid])
-        p.add_mesh(oclip, color=OXIDE_COLOR, opacity=0.22,
+        p.add_mesh(_clip_open(n_oxide), color=OXIDE_COLOR, opacity=0.22,
                   smooth_shading=True, show_edges=False)
         p.add_text(f"{LABELS[cfg]} - nMOS eMobility {ORIENTATION[cfg]}",
                   font_size=12, color="black")
