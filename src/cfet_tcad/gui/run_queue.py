@@ -9,6 +9,7 @@ on completion — the SWB node lighting up green.
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -17,6 +18,15 @@ from PySide6.QtCore import QObject, QProcess, Signal
 
 from ..workflow.config import apply_overrides, resolve_external_mesh
 from .experiment_table import Experiment, ExperimentModel, fom_summary
+
+
+_PROGRESS_RE = re.compile(r"^@@PROGRESS (\d+)/(\d+)\s*$")
+
+
+def parse_progress_line(line: str):
+    """'@@PROGRESS 3/29' -> (3, 29); None for anything else."""
+    m = _PROGRESS_RE.match(line)
+    return (int(m.group(1)), int(m.group(2))) if m else None
 
 
 def cli_command() -> tuple[str, list[str]]:
@@ -45,7 +55,9 @@ class RunQueue(QObject):
         super().__init__(parent)
         self.model = model
         self.max_parallel = max_parallel
-        self._procs: dict[int, QProcess] = {}  # row -> process
+        # keyed by Experiment identity, never by row: removing a table
+        # row shifts every following row index
+        self._procs: dict[Experiment, QProcess] = {}
 
     # --- job creation -------------------------------------------------------
 
@@ -76,15 +88,20 @@ class RunQueue(QObject):
     # --- scheduling -----------------------------------------------------
 
     def _maybe_start(self) -> None:
-        for row, exp in enumerate(self.model.experiments):
+        for exp in self.model.experiments:
             if len(self._procs) >= self.max_parallel:
                 return
-            if exp.status == "queued" and row not in self._procs:
-                self._start(row, exp)
+            if exp.status == "queued" and exp not in self._procs:
+                self._start(exp)
         if not self._procs:
             self.idle.emit()
 
-    def _start(self, row: int, exp: Experiment) -> None:
+    def _touch(self, exp: Experiment) -> None:
+        row = self.model.row_of(exp)
+        self.model.update_row(row)
+        self.experiment_changed.emit(row)
+
+    def _start(self, exp: Experiment) -> None:
         program, prefix = cli_command()
         proc = QProcess(self)
         proc.setProgram(program)
@@ -92,43 +109,52 @@ class RunQueue(QObject):
                                     "-o", str(exp.out_dir)])
         proc.setProcessChannelMode(QProcess.MergedChannels)
         proc.readyReadStandardOutput.connect(
-            lambda r=row, p=proc: self._on_output(r, p))
+            lambda e=exp, p=proc: self._on_output(e, p))
         proc.finished.connect(
-            lambda code, _status, r=row: self._on_finished(r, code))
-        self._procs[row] = proc
+            lambda code, _status, e=exp: self._on_finished(e, code))
+        self._procs[exp] = proc
         exp.status = "running"
-        self.model.update_row(row)
-        self.experiment_changed.emit(row)
+        self._touch(exp)
         self.log_line.emit(f"[{exp.name}] started")
         proc.start()
 
-    def _on_output(self, row: int, proc: QProcess) -> None:
-        name = self.model.experiments[row].name
+    def _on_output(self, exp: Experiment, proc: QProcess) -> None:
         text = bytes(proc.readAllStandardOutput()).decode(errors="replace")
         for line in text.splitlines():
-            self.log_line.emit(f"[{name}] {line}")
+            progress = parse_progress_line(line)
+            if progress is not None:  # swallowed: table cell, not log spam
+                done, total = progress
+                exp.progress = done / total if total else None
+                self._touch(exp)
+                continue
+            self.log_line.emit(f"[{exp.name}] {line}")
 
-    def _on_finished(self, row: int, exit_code: int) -> None:
-        exp = self.model.experiments[row]
-        self._procs.pop(row, None)
-        exp.status = "done" if exit_code == 0 else "failed"
+    def _on_finished(self, exp: Experiment, exit_code: int) -> None:
+        self._procs.pop(exp, None)
+        if exp.status != "stopped":  # a stop() stays a stop, not a failure
+            exp.status = "done" if exit_code == 0 else "failed"
         if exit_code == 0:
             fom_path = exp.out_dir / "fom.json"
             if fom_path.exists():
                 exp.fom = fom_summary(
                     json.loads(fom_path.read_text(encoding="utf-8")))
-        self.model.update_row(row)
-        self.experiment_changed.emit(row)
+        self._touch(exp)
         self.log_line.emit(f"[{exp.name}] {exp.status} (exit {exit_code})")
         self._maybe_start()
 
+    def stop(self, exp: Experiment) -> None:
+        """Stop one experiment: kill its process if running, or take a
+        queued one out of the schedule.  Files already written remain."""
+        if exp.status not in ("queued", "running"):
+            return
+        exp.status = "stopped"
+        proc = self._procs.get(exp)
+        if proc is not None:
+            proc.kill()  # _on_finished keeps the "stopped" status
+        else:
+            self._touch(exp)
+            self.log_line.emit(f"[{exp.name}] stopped (was queued)")
+
     def stop_all(self) -> None:
-        for row, proc in list(self._procs.items()):
-            proc.kill()
-            self.model.experiments[row].status = "failed"
-            self.model.update_row(row)
-        self._procs.clear()
-        for exp in self.model.experiments:
-            if exp.status == "queued":
-                exp.status = "failed"
-        self.model.layoutChanged.emit()
+        for exp in list(self.model.experiments):
+            self.stop(exp)

@@ -31,6 +31,8 @@ class Runner:
         self.layout = None
         self._solver = dict(type="dc", absolute_error=1e10,
                             relative_error=1e-10, maximum_iterations=50)
+        self._done = 0
+        self._total = 0
 
     # --- pipeline stages -------------------------------------------------
 
@@ -105,6 +107,7 @@ class Runner:
             if i > 0:
                 self._ramp(contacts, v, step)
             points.append(measure(self.device, all_contacts, ohmic))
+            self._tick()
             if vtk_tag and self.cfg.output.vtk and (
                     i % self.cfg.output.vtk_stride == 0 or i == n_steps):
                 prefix = self.out / "vtk" / f"{vtk_tag}_{i:03d}"
@@ -118,6 +121,19 @@ class Runner:
     def _tag(name: str, value: float) -> str:
         return f"{name}{value:+.3f}".replace("+", "p").replace("-", "m")
 
+    # --- progress reporting (machine-readable, parsed by the GUI) ---------
+
+    def _announce(self, total: int) -> None:
+        """Declare the total number of bias points before solving starts.
+        flush=True is load-bearing: the GUI reads these lines through a
+        pipe, where Python block-buffers stdout by default."""
+        self._done, self._total = 0, total
+        print(f"@@PROGRESS 0/{total}", flush=True)
+
+    def _tick(self) -> None:
+        self._done += 1
+        print(f"@@PROGRESS {self._done}/{self._total}", flush=True)
+
     # --- experiments -------------------------------------------------------
 
     def run_idvg(self) -> dict:
@@ -125,6 +141,9 @@ class Runner:
         scale = self.current_scale
         results = {"curves": [], "fom": {}}
         rows = []
+        pts = max(1, round(abs(sim.vg_stop - sim.vg_start)
+                           / abs(sim.vg_step))) + 1
+        self._announce(len(sim.vd) * pts)
 
         for vd in sim.vd:
             self._ramp(self.gates, sim.vg_start, sim.vg_step)
@@ -165,6 +184,9 @@ class Runner:
         scale = self.current_scale
         results = {"curves": []}
         rows = []
+        pts = max(1, round(abs(sim.vd_stop - sim.vd_start)
+                           / abs(sim.vd_step))) + 1
+        self._announce(len(sim.vg) * pts)
 
         for vg in sim.vg:
             self._ramp(["drain"], sim.vd_start, sim.vd_step)
@@ -204,6 +226,8 @@ class Runner:
         scale = self.current_scale
         results = {"curves": [], "fom": {}}
 
+        self._announce(max(1, round(abs(sim.vg_stop - sim.vg_start)
+                                    / abs(sim.vg_step))) + 1)
         self._ramp(["source_p"], vdd, sim.vd_step)
         self._ramp(["drain_n"], vdd, sim.vd_step)
         points = self._sweep(self.gates, sim.vg_start, sim.vg_stop,
@@ -253,6 +277,7 @@ class Runner:
 
         n_steps = max(1, round(abs(sim.vg_stop - sim.vg_start)
                                / abs(sim.vg_step)))
+        self._announce(n_steps + 1)
         vin, vout, i_dd = [], [], []
         snapshots = []
         for i in range(n_steps + 1):
@@ -262,6 +287,7 @@ class Runner:
             vin.append(v)
             vout.append(devsim.get_circuit_node_value(node="vout"))
             i_dd.append(contact_current(self.device, "source_p") * scale)
+            self._tick()
             if self.cfg.output.vtk and (
                     i % self.cfg.output.vtk_stride == 0 or i == n_steps):
                 prefix = self.out / "vtk" / f"vtc_{i:03d}"

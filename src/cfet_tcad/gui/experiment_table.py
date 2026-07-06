@@ -12,13 +12,14 @@ STATUS_COLORS = {
     "running": QColor("#f4d03f"),
     "done": QColor("#7dcea0"),
     "failed": QColor("#ec7063"),
+    "stopped": QColor("#aab7c4"),
 }
 
 COLUMNS = ("Experiment", "Parameters", "Status",
            "Vt [V]", "SS [mV/dec]", "Ion [A]", "Ioff [A]", "DIBL [mV/V]")
 
 
-@dataclass
+@dataclass(eq=False)  # identity semantics: hashable, usable as dict key
 class Experiment:
     name: str
     config_path: Path
@@ -26,6 +27,7 @@ class Experiment:
     overrides: dict = field(default_factory=dict)
     status: str = "queued"
     fom: dict = field(default_factory=dict)  # summarized, keys ~ COLUMNS[3:]
+    progress: float | None = None  # 0..1 while running (parsed from CLI)
 
 
 def fom_summary(fom: dict) -> dict:
@@ -92,6 +94,8 @@ class ExperimentModel(QAbstractTableModel):
                 return ", ".join(f"{k.split('.')[-1]}={v}"
                                  for k, v in exp.overrides.items()) or "-"
             if col == "Status":
+                if exp.status == "running" and exp.progress is not None:
+                    return f"running {exp.progress:.0%}"
                 return exp.status
             value = exp.fom.get(col)
             if value is None:
@@ -113,3 +117,12 @@ class ExperimentModel(QAbstractTableModel):
     def update_row(self, row: int) -> None:
         self.dataChanged.emit(self.index(row, 0),
                               self.index(row, len(COLUMNS) - 1))
+
+    def row_of(self, exp: Experiment) -> int:
+        return self.experiments.index(exp)
+
+    def remove(self, row: int) -> None:
+        """Drop a table row (files on disk are untouched)."""
+        self.beginRemoveRows(QModelIndex(), row, row)
+        del self.experiments[row]
+        self.endRemoveRows()

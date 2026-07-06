@@ -76,6 +76,73 @@ def test_config_form_roundtrip(qapp):
         form.to_raw()
 
 
+def test_progress_line_parsing():
+    from cfet_tcad.gui.run_queue import parse_progress_line
+
+    assert parse_progress_line("@@PROGRESS 3/29") == (3, 29)
+    assert parse_progress_line("@@PROGRESS 0/15") == (0, 15)
+    assert parse_progress_line("Iteration: 3") is None
+    assert parse_progress_line("x @@PROGRESS 3/29") is None
+
+
+def test_status_cell_shows_running_percent(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+
+    from cfet_tcad.gui.experiment_table import (
+        COLUMNS, Experiment, ExperimentModel, STATUS_COLORS)
+
+    model = ExperimentModel()
+    exp = Experiment(name="t", config_path=tmp_path / "c.yaml",
+                     out_dir=tmp_path)
+    row = model.add(exp)
+    idx = model.index(row, COLUMNS.index("Status"))
+    exp.status = "running"
+    exp.progress = 0.45
+    assert model.data(idx) == "running 45%"
+    assert "stopped" in STATUS_COLORS  # new terminal state has a color
+    exp.status = "stopped"
+    assert model.data(idx) == "stopped"
+    assert model.data(idx, Qt.BackgroundRole) == STATUS_COLORS["stopped"]
+
+
+def test_model_remove_and_identity(qapp, tmp_path):
+    from cfet_tcad.gui.experiment_table import Experiment, ExperimentModel
+
+    model = ExperimentModel()
+    exps = [Experiment(name=f"e{i}", config_path=tmp_path / "c.yaml",
+                       out_dir=tmp_path) for i in range(3)]
+    for e in exps:
+        model.add(e)
+    # identical field values must still be distinct dict keys (identity
+    # semantics) - two runs of the same config must not collide
+    twin = Experiment(name="e0", config_path=tmp_path / "c.yaml",
+                      out_dir=tmp_path)
+    assert {exps[0]: 1, twin: 2}[exps[0]] == 1
+
+    model.remove(1)  # drop the middle row
+    assert [e.name for e in model.experiments] == ["e0", "e2"]
+    assert model.rowCount() == 2
+    assert model.row_of(exps[2]) == 1  # rows shifted, lookup stays right
+
+
+def test_stop_queued_experiment(qapp, tmp_path):
+    from cfet_tcad.gui.experiment_table import Experiment, ExperimentModel
+    from cfet_tcad.gui.run_queue import RunQueue
+
+    model = ExperimentModel()
+    queue = RunQueue(model, max_parallel=0)  # nothing ever starts
+    exp = Experiment(name="q", config_path=tmp_path / "c.yaml",
+                     out_dir=tmp_path)
+    model.add(exp)
+    queue.stop(exp)
+    assert exp.status == "stopped"
+    queue.max_parallel = 2
+    queue._maybe_start()  # scheduler must not resurrect a stopped row
+    assert exp.status == "stopped" and not queue._procs
+    queue.stop(exp)  # idempotent on terminal states
+    assert exp.status == "stopped"
+
+
 def test_run_queue_materializes_point_config(qapp, tmp_path):
     from cfet_tcad.gui.experiment_table import ExperimentModel
     from cfet_tcad.gui.run_queue import RunQueue

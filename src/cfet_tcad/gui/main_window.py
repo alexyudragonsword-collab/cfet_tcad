@@ -164,6 +164,8 @@ class MainWindow(QMainWindow):
         # wiring
         self.config_list.currentTextChanged.connect(self.load_config)
         self.table.doubleClicked.connect(self.open_result)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.table_menu)
         self.queue.log_line.connect(self.log.append)
         self.queue.experiment_changed.connect(self._refresh_status)
 
@@ -299,6 +301,30 @@ class MainWindow(QMainWindow):
         self.structure.load_dir(out / "vtk")
         self.tabs.setCurrentWidget(self.structure)
         self.statusBar().showMessage("structure loaded")
+
+    def table_menu(self, pos) -> None:
+        """Right-click on an experiment row: stop / remove / open folder."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        row = index.row()
+        exp = self.model.experiments[row]
+        menu = QMenu(self)
+        act_stop = menu.addAction("Stop")
+        act_stop.setEnabled(exp.status in ("queued", "running"))
+        act_remove = menu.addAction("Remove from list (keeps files)")
+        act_remove.setEnabled(exp.status != "running")
+        act_open = menu.addAction("Open results folder")
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is act_stop:
+            self.queue.stop(exp)
+        elif chosen is act_remove:
+            self.model.remove(row)
+        elif chosen is act_open:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(exp.out_dir)))
 
     def open_result(self, index) -> None:
         exp = self.model.experiments[index.row()]

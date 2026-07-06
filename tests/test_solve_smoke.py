@@ -30,3 +30,28 @@ def test_equilibrium_converges(tmp_path, fresh_devsim, polarity, wf):
                                             name=majority)
     assert max(carriers) > 1e19  # S/D extensions are degenerate
     assert min(carriers) > 0.0
+
+
+@pytest.mark.slow
+def test_progress_lines_cover_all_bias_points(tmp_path, capsys, fresh_devsim):
+    """The runner announces '@@PROGRESS k/total' per measured point (the
+    GUI's progress source): the final line must reach total."""
+    import re
+
+    from cfet_tcad.workflow.config import build_config
+    from cfet_tcad.workflow.runner import run_config
+
+    cfg = build_config({
+        "device": {"name": "prog", "polarity": "n",
+                   "gate_workfunction_ev": 4.5},
+        "mesh": {"nx_sd": 6, "nx_gate": 10, "ny_si": 5, "ny_ox": 2},
+        "simulation": {"type": "idvg", "vd": [0.7], "vg_start": 0.0,
+                       "vg_stop": 0.2, "vg_step": 0.1},
+        "output": {"directory": "unused", "vtk": False},
+    })
+    run_config(cfg, tmp_path)
+    ticks = re.findall(r"^@@PROGRESS (\d+)/(\d+)$",
+                       capsys.readouterr().out, re.M)
+    assert ticks[0] == ("0", "3")     # 3 points: vg = 0.0, 0.1, 0.2
+    assert ticks[-1] == ("3", "3")    # ends complete
+    assert len(ticks) == 4            # announce + one per point

@@ -1047,3 +1047,146 @@ BTE 校准源、寄生RC+环振瞬态(声明范围外,用 VTC 作电路级替代
 3. 把对比图和报告发给用户(SendUserFile),提交推送。
 
 **结果**：提交 `0e41666`→`0aa300e`。四项对比方向全部与论文一致（+7.7%/−9.1%/+48.9%/+28.0% vs 论文 +10%/−5%/+73%/+47%）；后续延伸出 Fig4/8/9 风格图（`abc280b`→`37e27be`）。
+
+---
+
+## cfet_3d 多沟道复制:每器件多 fin(并排)/ 多 sheet(叠层)
+
+### Context
+
+用户对照论文 Fig.4 的 fin-based CFET 插图提问:上半 pMOS、下半 nMOS
+**各有两个 fin 并排**,当前器件与渲染是否支持。现状:cfet_3d 每器件只
+mesh 一个沟道体,n_sheets 仅是电流乘数;渲染端按 region 工作,builder
+画出来就能渲染。论文的两种构型都要多沟道:FBC = 每器件 2 fin 横向并排
+(fin pitch 26nm),SBC = 每器件 2 nanosheet 纵向叠层。
+
+**核心设计**:gmsh 物理组可含多个不相连的体——把一个器件的所有沟道
+复制体并入同一个 silicon_n/oxide_n/source_n/... 物理组,命名契约零变化
+→ 加载器、物理装配、求解、runner、渲染器全部零改动;DEVSIM 对含不连通
+分量的 region 求解无碍(块对角子系统)。
+
+### 改动(要点)
+
+1. DeviceParams:n_fins/fin_pitch_nm(横向)、n_stacked_sheets/
+   sheet_pitch_nm(纵向)+ 氧化壳重叠与结构限制校验;
+2. cfet_3d builder:器件循环内套 fi×si 复制循环,体/面聚合后一次性
+   addPhysicalGroup;nFET 基准 y 随 pFET 叠层总高抬升;默认 1×1 路径
+   与旧网格逐字节一致;
+3. 论文 5 配置切真实几何(FBC 2 fin @26nm;SBC/SBC31 2 sheet @15nm
+   假设 pitch),n_sheets 乘数退为 1;
+4. 重跑两个 lombardi 配置重出 Fig4/8/9;
+5. 测试:双沟道电流精确 = 2×单沟道(两个复制轴)、校验负例;
+6. 额外评估(应用户要求):meshwell 不引入(OCC 1e-7 公差 vs nm-in-cm、
+   非结构网格破坏位精确基线);ParaView 已天然支持,交付
+   examples/paraview_macro_fig8.py 宏 + README 查看指南;pvpython 不
+   引入(2GB 独立解释器 vs 进程内 PyVista,唯一差距 OSPRay 光追由用户
+   本地 ParaView 免费获得)。
+
+### 结果
+
+实现落地于提交 `21076d9`:默认路径网格 MD5 与旧 builder 逐字节一致;
+双 fin 与双叠层电流均精确 = 2×单沟道(rel <1e-6),不连通 region 求解
+正确性同时得证;测试套 94。真实 2-fin/2-sheet 几何的 Fig4/8/9 重渲染
+随 lombardi 重跑完成后交付(见 PROJECT_DEV_PLAN 待办)。
+
+---
+
+## GUI 实验表:running 进度百分比 + 单实验停止/删除
+
+### Context
+
+用户提出两个 GUI 增强:(1) 黄色 running 状态提供进度百分比;(2) 增加
+单个实验的停止与删除功能(现在只有工具栏 Stop 全停)。
+
+**现状与关键约束**(已核对源码):
+- 仿真跑在子进程里(`gui/run_queue.py` 每实验一个 QProcess 驱动 CLI),
+  GUI 只能从子进程 stdout 获取信息 → 进度必须由 runner **主动打印**
+  机器可读行,RunQueue 解析;
+- 偏压点总数在配置里是确定的(vg/vd 范围与步长)→ 百分比 = 已测点/总点,
+  语义准确且实现廉价;
+- `RunQueue._procs` 以**行号**为键、信号 lambda 捕获行号——删除行会使
+  行号漂移,这是删除功能的真正难点,必须先把进程表改为以 Experiment
+  **对象身份**为键。
+
+### 改动
+
+#### 1. runner 发进度(`workflow/runner.py`)
+
+- `Runner.__init__` 增加 `self._done = 0` / `self._total = 0`;
+- 新增 `_announce(total)`(打印 `@@PROGRESS 0/<total>`)与 `_tick()`
+  (自增并打印 `@@PROGRESS <done>/<total>`),**必须 `flush=True`**
+  (子进程 stdout 非 tty 时块缓冲,不 flush 百分比会攒到最后一起到);
+- 各实验入口先算总点数再开跑:
+  - `run_idvg`: `len(sim.vd) * (n_steps+1)`
+  - `run_idvd`: `len(sim.vg) * (n_steps+1)`
+  - `run_cfet_idvg` / `run_cfet_vtc`: `n_steps+1`
+- `_sweep` 每 measure 一个点调 `self._tick()`;VTC 循环同理;
+- CLI 人工运行时这些行无害(还有用);sweep 引擎的 per-point 日志文件
+  里也会出现,无碍。
+
+#### 2. RunQueue 重构 + 单实验停止(`gui/run_queue.py`)
+
+- `Experiment` 改 `@dataclass(eq=False)`(身份语义,可哈希——原 eq
+  比较字段,两次跑同一配置会撞车);
+- `_procs` 改为 `dict[Experiment, QProcess]`;信号 lambda 捕获 exp,
+  行号一律实时查 `model.row_of(exp)`(新helper,`experiments.index`);
+- 解析进度:`parse_progress_line(line) -> (done, total) | None` 纯函数
+  (正则 `@@PROGRESS (\d+)/(\d+)`);`_on_output` 命中则更新
+  `exp.progress`、`model.update_row`,**吞掉**该行不进日志面板;
+- 新 `stop(exp)`:running → 置 `status="stopped"` 后 kill(
+  `_on_finished` 里已是 stopped 的不再改写为 failed);queued → 直接置
+  stopped(调度器只认 queued);`stop_all` 改为逐个调 `stop`。
+
+#### 3. 表格模型(`gui/experiment_table.py`)
+
+- `Experiment` 增 `progress: float | None = None`;
+- `STATUS_COLORS` 增 `"stopped": QColor("#aab7c4")`(灰蓝);
+- Status 单元格显示:running 且有进度时 → `"running 45%"`;
+- 新 `remove(row)`(beginRemoveRows/endRemoveRows)与 `row_of(exp)`。
+
+#### 4. 右键菜单(`gui/main_window.py`)
+
+Experiments 表 `setContextMenuPolicy(Qt.CustomContextMenu)`,菜单项:
+- **Stop** —— running/queued 时可用,调 `queue.stop(exp)`;
+- **Remove from list** —— 非 running 时可用,调 `model.remove(row)`
+  (只移除表格行,**不删磁盘结果**,菜单文字明示);
+- **Open results folder** —— `QDesktopServices.openUrl`(顺手的小增强)。
+工具栏 Stop(全停)保留。
+
+#### 5. 测试(tests/test_gui.py + tests/test_solve_smoke.py 增补)
+
+1. `parse_progress_line` 命中/不命中;
+2. Status 单元格文本:running+progress=0.45 → "running 45%";
+3. `model.remove` 中间行后顺序/计数正确;Experiment 可哈希;
+4. `stop` 对 queued 实验 → "stopped" 且不再被调度(`_maybe_start` 后
+   仍 stopped);
+5. (slow)tiny idvg 经 `run_config` 跑完,capsys 里 `@@PROGRESS` 行数
+   == 总点数+1 且末行 done==total。
+
+#### 6. 文档与归档
+
+- 中英用户指南 Experiments 小节补一句(进度百分比、右键停止/移除);
+- 按 CLAUDE.md 约定归档:`docs/dev_plan_gui_progress_stop_delete.md` +
+  DEV_PLANS_ARCHIVE.md 追加 + PROJECT_DEV_PLAN 索引/状态更新。
+
+### 验证
+
+1. 全套 pytest 绿(新增 ~5 测试);
+2. 手动:offscreen 起 GUI 逻辑冒烟已由单测覆盖;真实交互验证留给用户
+   在 Windows exe 上做(改动后提醒手动触发打包);
+3. Linux CI 绿。
+
+### 风险
+
+- 子进程 stdout 缓冲吞百分比 → 已用 flush=True 针对;若 PyInstaller
+  Windows 下仍有缓冲差异,`_ensure_std_streams`/`-u` 兜底可加(实测再说);
+- 行号漂移类回归 → 全部行号现算 + 以对象为键,配删除中间行的单测。
+
+### 结果
+
+已实现并推送。runner 每测一个偏压点打印 `@@PROGRESS k/n`(flush),
+RunQueue 解析后在 Status 单元格显示 "running 45%",进度行不进日志;
+进程表改以 Experiment 对象身份为键(`@dataclass(eq=False)`),右键菜单
+提供 Stop / Remove from list(保留磁盘文件)/ Open results folder,
+新增 "stopped" 状态(灰蓝)。测试 +5(解析/显示/移除/身份/停止调度
++ slow 进度覆盖测试)。
