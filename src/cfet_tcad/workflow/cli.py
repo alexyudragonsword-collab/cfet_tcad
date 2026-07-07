@@ -100,16 +100,24 @@ def main(argv=None) -> int:
         spec = yaml.safe_load(args.spec.read_text(encoding="utf-8")) or {}
         out = Path(args.output or args.spec.with_suffix(".msh"))
         summary = convert_step(spec, args.spec.parent, out)
-        # "_run" suffix: never collides with the spec YAML itself
-        cfg_path = out.with_name(f"{out.stem}_run.yaml")
-        cfg_path.write_text(
-            yaml.safe_dump(starter_external_config(spec, out),
-                           sort_keys=False), encoding="utf-8")
         print(f"mesh written: {out} ({summary['nodes']} nodes)")
         for kind in ("regions", "contacts", "interfaces"):
             print(f"  {kind}: {summary[kind]}")
-        print(f"starter config: {cfg_path} (tune doping / workfunctions / "
-              f"biases, then: cfet-tcad run {cfg_path.name})")
+        # "_run" suffix: never collides with the spec YAML itself.  Never
+        # clobber an existing run config - a shipped demo ships a
+        # hand-tuned one, and regenerating a generic starter over it would
+        # break the sim.
+        cfg_path = out.with_name(f"{out.stem}_run.yaml")
+        if cfg_path.exists():
+            print(f"run config kept: {cfg_path.name} already exists "
+                  f"(delete it to regenerate a starter)")
+        else:
+            cfg_path.write_text(
+                yaml.safe_dump(starter_external_config(spec, out),
+                               sort_keys=False), encoding="utf-8")
+            print(f"starter config: {cfg_path} (tune doping / "
+                  f"workfunctions / biases, then: cfet-tcad run "
+                  f"{cfg_path.name})")
         return 0
 
     if args.command == "sweep":

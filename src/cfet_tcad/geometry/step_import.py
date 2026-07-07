@@ -305,32 +305,57 @@ def convert_step(spec: dict, spec_dir: Path, out_msh: Path) -> dict:
 def starter_external_config(spec: dict, out_msh: Path) -> dict:
     """A runnable ``structure: external`` config skeleton for the
     converted mesh.  Doping defaults to a mild uniform profile on every
-    silicon region - the user tunes doping / workfunctions / biases."""
+    silicon region - the user tunes doping / workfunctions / biases.
+
+    The simulation type is picked from the contact names: a CFET stack
+    (contacts split into ``*_n`` and ``*_p`` sub-devices) gets a
+    ``cfet_idvg`` sweep with per-sub-device polarity/workfunctions, so
+    the starter actually runs; a single device gets a plain ``idvg``.
+    A single-device idvg needs contacts literally named source/drain/
+    gate, so mismatched names would otherwise crash on a missing
+    ``drain`` - the CFET branch avoids that for stacked geometries."""
     regions = {name: r.get("material", "Silicon")
                for name, r in (spec.get("regions") or {}).items()}
     contacts = {name: c["region"]
                 for name, c in (spec.get("contacts") or {}).items()}
-    doping = {name: {"profile": "uniform", "donors_cm3": 1.0e17,
-                     "acceptors_cm3": 0.0}
-              for name, material in regions.items() if material == "Silicon"}
+    silicon = [n for n, m in regions.items() if m == "Silicon"]
+    doping = {n: {"profile": "uniform", "donors_cm3": 1.0e17,
+                  "acceptors_cm3": 0.0} for n in silicon}
+    external = {
+        "mesh_file": Path(out_msh).name,  # sits next to the config
+        "dimension": 3,
+        "regions": regions,
+        "contacts": contacts,
+        "interfaces": {k: list(v) for k, v in
+                       (spec.get("interfaces") or {}).items()},
+        "doping": doping,
+    }
+
+    is_cfet = (any(c.endswith("_n") for c in contacts)
+               and any(c.endswith("_p") for c in contacts))
+    if is_cfet:
+        # infer per-sub-device polarity / gate metal from the _n/_p suffix
+        external["silicon_polarity"] = {
+            n: ("p" if n.endswith("_p") else "n") for n in silicon}
+        gates = [n for n, r in contacts.items()
+                 if regions.get(r) == "Oxide"]
+        external["gate_workfunctions"] = {
+            g: (4.72 if g.endswith("_p") else 4.50) for g in gates}
+        simulation = {"type": "cfet_idvg", "vdd": 0.7, "vg_start": 0.0,
+                      "vg_stop": 0.7, "vg_step": 0.05}
+    else:
+        simulation = {"type": "idvg", "vd": [0.05], "vg_start": 0.0,
+                      "vg_stop": 0.7, "vg_step": 0.1}
+
     return {
         "device": {
             "name": Path(out_msh).stem,
             "structure": "external",
             "polarity": "n",
             "gate_workfunction_ev": 4.5,
-            "external": {
-                "mesh_file": Path(out_msh).name,  # sits next to the config
-                "dimension": 3,
-                "regions": regions,
-                "contacts": contacts,
-                "interfaces": {k: list(v) for k, v in
-                               (spec.get("interfaces") or {}).items()},
-                "doping": doping,
-            },
+            "external": external,
         },
-        "simulation": {"type": "idvg", "vd": [0.05], "vg_start": 0.0,
-                       "vg_stop": 0.7, "vg_step": 0.1},
+        "simulation": simulation,
         "output": {"directory": f"results/{Path(out_msh).stem}",
                    "vtk": True},
     }

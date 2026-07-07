@@ -236,6 +236,35 @@ def test_sbc_demo_generator_converts_cleanly(tmp_path):
         assert on_disk == import_spec("paper_sbc_cfet_demo.step")
 
 
+def test_starter_config_picks_sim_type_from_contacts(tmp_path):
+    # single device -> plain idvg (contacts source/drain/gate)
+    single = {"regions": {"bulk": {"select": {}, "material": "Silicon"},
+                          "gox": {"select": {}, "material": "Oxide"}},
+              "contacts": {"source": {"region": "bulk"},
+                           "drain": {"region": "bulk"},
+                           "gate": {"region": "gox"}}}
+    cfg = starter_external_config(single, tmp_path / "d.msh")
+    assert cfg["simulation"]["type"] == "idvg"
+
+    # CFET stack (_n/_p sub-devices) -> cfet_idvg, so it never crashes on
+    # a missing "drain" contact; polarity/workfunctions inferred by suffix
+    cfet = {"regions": {"silicon_n": {"select": {}, "material": "Silicon"},
+                        "oxide_n": {"select": {}, "material": "Oxide"},
+                        "silicon_p": {"select": {}, "material": "Silicon"},
+                        "oxide_p": {"select": {}, "material": "Oxide"}},
+            "contacts": {"source_n": {"region": "silicon_n"},
+                         "drain_n": {"region": "silicon_n"},
+                         "gate_n": {"region": "oxide_n"},
+                         "source_p": {"region": "silicon_p"},
+                         "drain_p": {"region": "silicon_p"},
+                         "gate_p": {"region": "oxide_p"}}}
+    cfg = starter_external_config(cfet, tmp_path / "s.msh")
+    assert cfg["simulation"]["type"] == "cfet_idvg"
+    ext = cfg["device"]["external"]
+    assert ext["silicon_polarity"] == {"silicon_n": "n", "silicon_p": "p"}
+    assert ext["gate_workfunctions"] == {"gate_n": 4.50, "gate_p": 4.72}
+
+
 @pytest.mark.slow
 def test_converted_mesh_solves_through_external(step_file, tmp_path):
     from cfet_tcad.workflow.config import load_config
