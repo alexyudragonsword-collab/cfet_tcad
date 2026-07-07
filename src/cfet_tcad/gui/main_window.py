@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QListWidget,
     QMainWindow,
     QMenu,
@@ -124,14 +125,16 @@ class RowActions(QWidget):
 
         self.run_btn = _btn("Run", lambda: window.queue.start(exp))
         self.stop_btn = _btn("Stop", lambda: window.queue.stop(exp))
+        self.edit_btn = _btn("Edit", lambda: window.edit_experiment(exp))
         self.sweep_btn = _btn("Sweep", lambda: window.run_sweep(exp))
         self.structure_btn = _btn("Structure",
                                   lambda: window.preview_structure(exp))
         self.refresh()
 
     def refresh(self) -> None:
-        self.run_btn.setEnabled(
-            self.exp.status in ("pending", "done", "failed", "stopped"))
+        editable = self.exp.status in ("pending", "done", "failed", "stopped")
+        self.run_btn.setEnabled(editable)
+        self.edit_btn.setEnabled(editable)  # not while queued/running
         self.stop_btn.setEnabled(self.exp.status in ("queued", "running"))
 
 
@@ -158,7 +161,8 @@ class MainWindow(QMainWindow):
         # widgets
         self.folder_label = ElidedLabel()
         self.folder_label.setStyleSheet("padding: 2px; color: #444;")
-        self.config_list = QListWidget()
+        self.config_list = QListWidget()   # .yaml designs
+        self.step_list = QListWidget()     # .step / .stp CAD files
         self.model = ExperimentModel(self)
         self.queue = RunQueue(self.model, parent=self)
         self.table = QTableView()
@@ -183,13 +187,32 @@ class MainWindow(QMainWindow):
         self.manual.setWindowTitle("Manual / 说明书")
         self.manual.resize(920, 720)
 
-        # left panel: current folder path above the YAML list
+        # left panel: current folder path on top, then two stacked
+        # sections - YAML designs above, STEP/CAD files below - split by
+        # a draggable divider so long names never crowd each other
+        def _section(title: str, widget) -> QWidget:
+            pane = QWidget()
+            box = QVBoxLayout(pane)
+            box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(1)
+            heading = QLabel(title)
+            heading.setStyleSheet("font-weight: bold; color: #555;")
+            box.addWidget(heading)
+            box.addWidget(widget)
+            return pane
+
+        self.files_split = QSplitter(Qt.Vertical)
+        self.files_split.addWidget(_section("Designs (.yaml)",
+                                            self.config_list))
+        self.files_split.addWidget(_section("CAD (.step)", self.step_list))
+        self.files_split.setStretchFactor(0, 3)  # YAML section larger
+        self.files_split.setStretchFactor(1, 1)
         left = QWidget()
         lbox = QVBoxLayout(left)
         lbox.setContentsMargins(0, 0, 0, 0)
         lbox.setSpacing(2)
         lbox.addWidget(self.folder_label)
-        lbox.addWidget(self.config_list)
+        lbox.addWidget(self.files_split)
 
         # center workspace: Experiments over (Results | Structure 3D),
         # every pane resizable through the splitters
@@ -241,6 +264,10 @@ class MainWindow(QMainWindow):
             lambda item: self.edit_config(self.config_folder / item.text()))
         self.config_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.config_list.customContextMenuRequested.connect(self.config_menu)
+        self.step_list.itemDoubleClicked.connect(
+            lambda item: self.open_step_dialog(self.config_folder / item.text()))
+        self.step_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.step_list.customContextMenuRequested.connect(self.step_menu)
         self.table.doubleClicked.connect(self.open_result)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.table_menu)
@@ -276,14 +303,17 @@ class MainWindow(QMainWindow):
 
     def populate_configs(self, folder: Path | None = None) -> None:
         self.config_list.clear()
+        self.step_list.clear()
         self.config_folder = Path(folder or self.config_folder)
         self.folder_label.setText(str(self.config_folder))
         self.folder_label.setToolTip(str(self.config_folder))
         if self.config_folder.is_dir():
-            names = [p.name for pattern in ("*.yaml", "*.step", "*.stp")
+            for p in sorted(self.config_folder.glob("*.yaml")):
+                self.config_list.addItem(p.name)
+            steps = [p.name for pattern in ("*.step", "*.stp")
                      for p in self.config_folder.glob(pattern)]
-            for name in sorted(names):
-                self.config_list.addItem(name)
+            for name in sorted(steps):
+                self.step_list.addItem(name)
 
     def pick_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Config folder",
@@ -292,22 +322,12 @@ class MainWindow(QMainWindow):
             self.populate_configs(Path(folder))
 
     def config_menu(self, pos) -> None:
-        """Right-click on a YAML: edit / add to experiments / copy /
-        delete."""
+        """Right-click on a YAML design: edit / add / copy / delete."""
         item = self.config_list.itemAt(pos)
         if item is None:
             return
         path = self.config_folder / item.text()
         menu = QMenu(self)
-        if path.suffix.lower() in (".step", ".stp"):
-            act_convert = menu.addAction("Convert to mesh...")
-            act_volumes = menu.addAction("List volumes")
-            chosen = menu.exec(self.config_list.viewport().mapToGlobal(pos))
-            if chosen is act_convert:
-                self.open_step_dialog(path)
-            elif chosen is act_volumes:
-                self.list_step_volumes(path)
-            return
         act_edit = menu.addAction("Edit")
         act_add = menu.addAction("Add")
         act_copy = menu.addAction("Copy...")
@@ -321,6 +341,21 @@ class MainWindow(QMainWindow):
             self._copy_config_dialog(path)
         elif chosen is act_delete:
             self._delete_config_dialog(path)
+
+    def step_menu(self, pos) -> None:
+        """Right-click on a STEP/CAD file: convert to mesh / list volumes."""
+        item = self.step_list.itemAt(pos)
+        if item is None:
+            return
+        path = self.config_folder / item.text()
+        menu = QMenu(self)
+        act_convert = menu.addAction("Convert to mesh...")
+        act_volumes = menu.addAction("List volumes")
+        chosen = menu.exec(self.step_list.viewport().mapToGlobal(pos))
+        if chosen is act_convert:
+            self.open_step_dialog(path)
+        elif chosen is act_volumes:
+            self.list_step_volumes(path)
 
     def edit_config(self, path: Path) -> None:
         """Pop up the parameter editor for one YAML (double-click or
@@ -409,6 +444,36 @@ class MainWindow(QMainWindow):
         self.queue.add(exp)
         return exp
 
+    def edit_experiment(self, exp: Experiment) -> None:
+        """Per-row Edit: tweak this run's parameters before it runs.
+        Save overwrites the run's config (the Changes column refreshes);
+        Save As... defaults into configs/ so the tweaked run becomes a
+        reusable design."""
+        if exp.status in ("queued", "running"):
+            return
+        from .params_dialog import ParamsDialog
+        from .run_queue import config_changes
+        safe_name = exp.name.replace(":", "_").replace("/", "_")
+        try:
+            dlg = ParamsDialog(exp.config_path, parent=self,
+                               save_as_dir=self.config_folder,
+                               save_as_name=safe_name)
+        except Exception as exc:  # noqa: BLE001 - malformed YAML etc.
+            QMessageBox.warning(self, "Config error", str(exc))
+            return
+
+        def _on_saved(saved_path: Path) -> None:
+            if Path(saved_path) == Path(exp.config_path):
+                # edited the run config in place: refresh the diff column
+                exp.changes = config_changes(exp.config_path,
+                                             exp.base_config or exp.config_path)
+                self.model.update_row(self.model.row_of(exp))
+            else:  # Save As into configs/: a new reusable design appears
+                self.populate_configs()
+
+        dlg.saved.connect(_on_saved)
+        dlg.exec()
+
     def copy_config(self, path: Path, new_name: str) -> Path:
         """Copy a YAML inside the current folder under a new name."""
         if not new_name.endswith((".yaml", ".yml")):
@@ -482,9 +547,9 @@ class MainWindow(QMainWindow):
             tag = "_".join(f"{k.split('.')[-1]}{v}"
                            for k, v in overrides.items())
             out = self.results_root / f"{stamp}_{base_tag}" / f"p{i:03d}_{tag}"
-            child = self.queue.make_experiment(f"{exp.name}:{tag}",
-                                               exp.config_path, out,
-                                               overrides)
+            child = self.queue.make_experiment(
+                f"{exp.name}:{tag}", exp.config_path, out, overrides,
+                base_config=exp.base_config or exp.config_path)
             self.queue.add(child)
 
     def preview_structure(self, exp: Experiment) -> None:

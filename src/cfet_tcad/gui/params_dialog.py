@@ -24,9 +24,15 @@ from .config_form import ConfigForm
 class ParamsDialog(QDialog):
     saved = Signal(Path)  # emitted after every successful write
 
-    def __init__(self, path: Path, parent=None):
+    def __init__(self, path: Path, parent=None, save_as_dir: Path | None = None,
+                 save_as_name: str | None = None):
         super().__init__(parent)
         self.path = Path(path)
+        #: where "Save As..." defaults (e.g. configs/ when editing a run)
+        self.save_as_dir = Path(save_as_dir) if save_as_dir else self.path.parent
+        #: default file stem for "Save As..." (the run's name, not the
+        #: generic "config" the materialized run file carries)
+        self.save_as_name = save_as_name or self.path.stem
         self.setWindowTitle(f"Parameters - {self.path.name}")
         from .widgets import fit_to_screen
         fit_to_screen(self, 560, 720)
@@ -60,10 +66,12 @@ class ParamsDialog(QDialog):
             self.accept()
 
     def save_as(self) -> None:
-        """Write the form to a new YAML file (rename-and-keep-original)."""
+        """Write the form to a new YAML file (rename-and-keep-original).
+        Defaults into ``save_as_dir`` - configs/ when editing a run, so
+        a tweaked run becomes a reusable design."""
+        default = self.save_as_dir / f"{self.save_as_name}.yaml"
         target, _ = QFileDialog.getSaveFileName(
-            self, "Save config as", str(self.path.with_name(
-                f"{self.path.stem}_copy.yaml")),
+            self, "Save config as", str(default),
             "YAML (*.yaml);;All files (*)")
         if not target:
             return

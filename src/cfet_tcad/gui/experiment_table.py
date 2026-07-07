@@ -17,7 +17,8 @@ STATUS_COLORS = {
 }
 
 COLUMNS = ("Experiment", "Parameters", "Status", "Actions",
-           "Vt [V]", "SS [mV/dec]", "Ion [A]", "Ioff [A]", "DIBL [mV/V]")
+           "Vt [V]", "SS [mV/dec]", "Ion [A]", "Ioff [A]", "DIBL [mV/V]",
+           "Changes")
 
 
 @dataclass(eq=False)  # identity semantics: hashable, usable as dict key
@@ -29,6 +30,10 @@ class Experiment:
     status: str = "pending"
     fom: dict = field(default_factory=dict)  # summarized, keys ~ COLUMNS[3:]
     progress: float | None = None  # 0..1 while running (parsed from CLI)
+    #: the original configs/*.yaml this run derives from (for the diff)
+    base_config: Path | None = None
+    #: human-readable diff of config_path vs base_config ("Changes" column)
+    changes: str = ""
 
 
 def fom_summary(fom: dict) -> dict:
@@ -100,6 +105,8 @@ class ExperimentModel(QAbstractTableModel):
                 return exp.status
             if col == "Actions":  # rendered by per-row index widgets
                 return None
+            if col == "Changes":
+                return exp.changes or "-"
             value = exp.fom.get(col)
             if value is None:
                 return ""

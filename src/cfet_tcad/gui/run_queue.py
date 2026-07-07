@@ -29,6 +29,44 @@ def parse_progress_line(line: str):
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
+def _flatten(d: dict, prefix: str = "") -> dict:
+    """Flatten a nested config dict to dotted keys (device.l_gate_nm ...)."""
+    out: dict = {}
+    for key, value in (d or {}).items():
+        dotted = f"{prefix}{key}"
+        if isinstance(value, dict):
+            out.update(_flatten(value, dotted + "."))
+        else:
+            out[dotted] = value
+    return out
+
+
+def config_changes(config_path: Path, base_config: Path) -> str:
+    """A compact, human-readable diff of ``config_path`` against the
+    original ``base_config`` - what this run changed relative to the
+    design it came from.  Empty string when they are identical."""
+    try:
+        cur = _flatten(yaml.safe_load(
+            Path(config_path).read_text(encoding="utf-8")) or {})
+        base = _flatten(yaml.safe_load(
+            Path(base_config).read_text(encoding="utf-8")) or {})
+    except (OSError, yaml.YAMLError):
+        return ""
+    diffs = []
+    for key in sorted(set(cur) | set(base)):
+        old, new = base.get(key), cur.get(key)
+        if old == new:
+            continue
+        short = key.split(".")[-1]
+        if key not in base:
+            diffs.append(f"+{short}={new}")
+        elif key not in cur:
+            diffs.append(f"-{short}")
+        else:
+            diffs.append(f"{short}: {old}→{new}")
+    return "; ".join(diffs)
+
+
 def cli_command() -> tuple[str, list[str]]:
     """(program, prefix args) that invoke the cfet-tcad CLI in a child
     process.  Frozen (PyInstaller) builds have no Python interpreter —
@@ -61,24 +99,34 @@ class RunQueue(QObject):
 
     # --- job creation -------------------------------------------------------
 
-    def make_experiment(self, name: str, base_config: Path, out_dir: Path,
-                        overrides: dict | None = None) -> Experiment:
-        """Materialize a point config (base YAML + overrides) in its own
-        output directory and register it as a queued experiment."""
+    def make_experiment(self, name: str, source_config: Path, out_dir: Path,
+                        overrides: dict | None = None,
+                        base_config: Path | None = None) -> Experiment:
+        """Materialize a point config (``source_config`` + overrides) in
+        its own output directory and register it as a pending experiment.
+
+        ``base_config`` is the original design the "Changes" column is
+        diffed against; it defaults to ``source_config`` (for a plain Add
+        the source *is* the original, while a sweep passes the parent's
+        original so the diff stays relative to the untouched design)."""
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
+        source_config = Path(source_config)
+        base_config = Path(base_config) if base_config else source_config
         raw = yaml.safe_load(
-            Path(base_config).read_text(encoding="utf-8")) or {}
+            source_config.read_text(encoding="utf-8")) or {}
         if overrides:
             raw = apply_overrides(raw, overrides)
         # the point config lands in out_dir: pin a relative external mesh
-        # to the base config's directory before the copy moves it
-        resolve_external_mesh(raw, Path(base_config).parent)
+        # to the source config's directory before the copy moves it
+        resolve_external_mesh(raw, source_config.parent)
         cfg = out_dir / "config.yaml"
         cfg.write_text(yaml.safe_dump(raw, sort_keys=False),
                        encoding="utf-8")
         return Experiment(name=name, config_path=cfg, out_dir=out_dir,
-                          overrides=dict(overrides or {}))
+                          overrides=dict(overrides or {}),
+                          base_config=base_config,
+                          changes=config_changes(cfg, base_config))
 
     def add(self, exp: Experiment) -> int:
         """Register an experiment in the table as *pending*: it will not

@@ -196,6 +196,27 @@ def test_run_queue_materializes_point_config(qapp, tmp_path):
     raw = yaml.safe_load(exp.config_path.read_text())
     assert raw["device"]["l_gate_nm"] == 18.0
     assert exp.status == "pending"  # nothing runs before its Run button
+    # the run remembers its original design and its diff against it
+    from pathlib import Path
+    assert exp.base_config == Path("configs/nsheet_nfet_2d.yaml")
+    assert "l_gate_nm:" in exp.changes and "18.0" in exp.changes
+
+
+def test_config_changes_diff(tmp_path):
+    from cfet_tcad.gui.run_queue import config_changes
+
+    base = tmp_path / "base.yaml"
+    base.write_text("device: {l_gate_nm: 15.0, polarity: n}\n")
+    same = tmp_path / "same.yaml"
+    same.write_text("device: {l_gate_nm: 15.0, polarity: n}\n")
+    assert config_changes(same, base) == ""      # identical -> no changes
+
+    edited = tmp_path / "edited.yaml"
+    edited.write_text("device: {l_gate_nm: 12.0, polarity: n}\n"
+                      "physics: {mobility_scale_n: 0.75}\n")
+    diff = config_changes(edited, base)
+    assert "l_gate_nm: 15.0→12.0" in diff        # changed value
+    assert "+mobility_scale_n=0.75" in diff       # added key
 
 
 def test_main_window_constructs(qapp, tmp_path):
@@ -207,8 +228,10 @@ def test_main_window_constructs(qapp, tmp_path):
     win = MainWindow(project_root=tmp_path)  # empty project: no configs
     assert win.windowTitle() == (
         f"{cfet_tcad.__app_name__} v{cfet_tcad.__version__}")
-    assert win.config_list.count() == 0
-    # the folder path is surfaced above the YAML list
+    # left panel has two stacked sections: YAML designs and STEP/CAD
+    assert win.config_list.count() == 0 and win.step_list.count() == 0
+    assert win.files_split.orientation() == Qt.Vertical
+    # the folder path is surfaced above both lists
     assert win.folder_label.text() == str(tmp_path / "configs")
     # single composite workspace: Experiments on top, Results bottom-left,
     # Structure 3D bottom-right (the guide is a window, not a tab)
@@ -251,17 +274,68 @@ def test_row_action_buttons_follow_rows(qapp, tmp_path):
     assert len(win._action_widgets) == 1
     w = win._action_widgets[0]
     assert w.exp is exp
-    # pending: Run enabled, Stop disabled
-    assert w.run_btn.isEnabled() and not w.stop_btn.isEnabled()
+    # pending: Run + Edit enabled, Stop disabled
+    assert w.run_btn.isEnabled() and w.edit_btn.isEnabled()
+    assert not w.stop_btn.isEnabled()
     exp.status = "running"
     win._refresh_action_row(0)
-    assert not w.run_btn.isEnabled() and w.stop_btn.isEnabled()
+    # running: Edit disabled (can't tweak a live run), Stop enabled
+    assert not w.run_btn.isEnabled() and not w.edit_btn.isEnabled()
+    assert w.stop_btn.isEnabled()
     # the Actions column renders through widgets, not model text
     col = COLUMNS.index("Actions")
     assert win.model.data(win.model.index(0, col)) is None
     # removing the row rebuilds the strips
     win.model.remove(0)
     assert win._action_widgets == []
+    win.close()
+
+
+def test_edit_experiment_updates_changes_and_save_as(qapp, tmp_path,
+                                                     monkeypatch):
+    from cfet_tcad.gui.experiment_table import COLUMNS
+    from cfet_tcad.gui.main_window import MainWindow
+
+    win = MainWindow(project_root=tmp_path)
+    win.config_folder.mkdir(parents=True, exist_ok=True)
+    import shutil
+    cfg = win.config_folder / "a.yaml"
+    shutil.copyfile("configs/nsheet_nfet_2d.yaml", cfg)
+    exp = win.add_config_to_experiments(cfg)
+    assert exp.changes == ""  # fresh add: identical to its design
+
+    # capture the dialog instead of exec()-ing it (offscreen, modal)
+    opened = {}
+    from cfet_tcad.gui import params_dialog
+
+    def fake_exec(self):
+        opened["dlg"] = self
+        return 0
+    monkeypatch.setattr(params_dialog.ParamsDialog, "exec", fake_exec)
+    win.edit_experiment(exp)
+    dlg = opened["dlg"]
+    # Save As defaults into configs/ under the run's name (not "config")
+    assert dlg.save_as_dir == win.config_folder
+    assert dlg.save_as_name == "a"
+
+    # edit a field and Save (overwrite the run config) -> Changes refreshes
+    dlg.form._widgets[("device", "l_gate_nm")].setText("21.0")
+    dlg.save()
+    changes_col = COLUMNS.index("Changes")
+    text = win.model.data(win.model.index(win.model.row_of(exp), changes_col))
+    assert "l_gate_nm" in text and "21" in text
+
+    # Save As into configs/ -> a new reusable design appears in the list
+    target = win.config_folder / "a_variant.yaml"
+    monkeypatch.setattr(
+        "cfet_tcad.gui.params_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(target), "YAML (*.yaml)"))
+    dlg.save_as()
+    win.populate_configs()
+    assert target.exists()
+    names = [win.config_list.item(i).text()
+             for i in range(win.config_list.count())]
+    assert "a_variant.yaml" in names
     win.close()
 
 
@@ -306,9 +380,13 @@ def test_step_files_listed_and_dialog_template(qapp, tmp_path):
         gmsh.write(str(step))
     finally:
         gmsh.finalize()
+    (win.config_folder / "design.yaml").write_text("device: {}\n")
     win.populate_configs()
+    # .step files land in their own section, .yaml in theirs
+    assert [win.step_list.item(i).text()
+            for i in range(win.step_list.count())] == ["cad.step"]
     assert [win.config_list.item(i).text()
-            for i in range(win.config_list.count())] == ["cad.step"]
+            for i in range(win.config_list.count())] == ["design.yaml"]
 
     dlg = StepConvertDialog(step)
     text = dlg.editor.toPlainText()
