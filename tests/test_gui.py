@@ -361,11 +361,12 @@ def test_params_dialog_save_and_save_as(qapp, tmp_path, monkeypatch):
 
 
 def test_elided_labels_do_not_pin_pane_widths(qapp, tmp_path):
-    from cfet_tcad.gui.structure_view import NO_3D_ENV
     from cfet_tcad.gui.widgets import ElidedLabel
 
-    import os
-    os.environ.pop(NO_3D_ENV, None)  # want the full widget path if viz
+    # do NOT clear CFET_TCAD_NO_3D here: the packaging CI sets it to keep
+    # StructureView from spawning a real VTK interactor, which
+    # access-violates on the headless Windows runner.  The 3D-title
+    # assertions below are already guarded by `plotter is not None`.
     from cfet_tcad.gui.main_window import MainWindow
 
     deep = tmp_path.joinpath(*(["very_long_directory_name"] * 6))
