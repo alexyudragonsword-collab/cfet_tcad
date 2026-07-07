@@ -185,7 +185,12 @@ Node and Beyond》的器件级对比（详见
 Run/Stop/Sweep/Structure 按钮、pending 待仿真生命周期、Run All/Stop
 All 工具栏、Open 菜单 + 文件夹路径显示、参数编辑弹窗（Save/Save As）、
 YAML 右键 Edit/Add/Copy/Delete、Experiments/Results/Structure 3D
-三区合一可调布局。
+三区合一可调布局。后续增量:`.step` CAD 导入(FBC/SBC 演示)、文件面板
+上下分区(.yaml / .step)+ 实验行 Edit/Save As + 相对原始 yaml 的改动列
+(`dev_plan_gui_experiment_edit_filepanes.md`)、新增 `cfet_idvd`
+CFET 输出特性仿真类型。用户手册与 User Guide 截图刷新到单窗口新 UI
+(`tab_experiments/results/structure/parameters.png`),手册补充 CFET
+输出特性说明。
 
 ## 4. 已知能力边界（明确声明，非缺陷）
 
