@@ -312,15 +312,42 @@ def test_step_files_listed_and_dialog_template(qapp, tmp_path):
 
     dlg = StepConvertDialog(step)
     text = dlg.editor.toPlainText()
-    # the discovered volume table and the spec skeleton are prefilled
+    # no sibling spec: the template scaffolds a region for EVERY volume
+    # (here one) so conversion never fails on an unclaimed solid
     assert "step_file: cad.step" in text
     assert "unit_cm" in text and "tag" in text
+    assert "region_1:" in text and "volume: 1" in text
     assert dlg.spec_path.name == "cad_import.yaml"
     fired: list = []
     dlg.convert_requested.connect(fired.append)
     dlg._convert()
     assert dlg.spec_path.exists() and fired == [dlg.spec_path]
     win.close()
+
+
+def test_step_dialog_prefers_sibling_spec(qapp, tmp_path):
+    gmsh = pytest.importorskip("gmsh")
+
+    from cfet_tcad.gui.step_dialog import StepConvertDialog
+
+    step = tmp_path / "demo.step"
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("t")
+        gmsh.model.occ.addBox(0, 0, 0, 10, 5, 3)
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(step))
+    finally:
+        gmsh.finalize()
+    # a ready-made spec shipping next to the STEP is loaded verbatim, so
+    # right-click Convert on a bundled demo works out of the box
+    sibling = tmp_path / "demo_import.yaml"
+    sibling.write_text("step_file: demo.step\n# HAND-TUNED SPEC MARKER\n",
+                       encoding="utf-8")
+    dlg = StepConvertDialog(step)
+    assert "HAND-TUNED SPEC MARKER" in dlg.editor.toPlainText()
+    dlg.close()
 
 
 def test_params_dialog_save_and_save_as(qapp, tmp_path, monkeypatch):

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QVBoxLayout,
 )
@@ -25,35 +26,50 @@ SPEC_TEMPLATE = """\
 #
 # Selectors: label (regex on the CAD label), volume (tag or [tags]),
 # bbox ([x0,y0,z0,x1,y1,z1], CAD units).  Every volume must be claimed
-# by exactly one region.  Contacts use bbox only.
+# by exactly one region.  One region per volume is scaffolded below and
+# all start as Silicon - merge volumes into shared regions and set the
+# gate-oxide ones to `material: Oxide` as needed.  Contacts use bbox only.
 
 step_file: {step_name}
 unit_cm: 1.0e-7        # 1 CAD unit in cm (nm: 1e-7, um: 1e-4, mm: 0.1)
 mesh_size: 2.0         # characteristic length, CAD units
 
 regions:
-  bulk: {{select: {{volume: 1}}, material: Silicon}}
-  gox:  {{select: {{volume: 2}}, material: Oxide}}
+{regions}
 
-contacts:
-  source: {{select: {{bbox: [0, 0, 0, 0, 1, 1]}}, region: bulk}}
-  drain:  {{select: {{bbox: [1, 0, 0, 1, 1, 1]}}, region: bulk}}
-  gate:   {{select: {{bbox: [0, 1, 0, 1, 1, 1]}}, region: gox}}
+# contacts:   # add bbox selectors once you know the S/D and gate faces
+#   source: {{select: {{bbox: [x0, y0, z0, x1, y1, z1]}}, region: region_1}}
+#   gate:   {{select: {{bbox: [x0, y0, z0, x1, y1, z1]}}, region: region_2}}
 
-interfaces:
-  si_ox: [bulk, gox]
+# interfaces:   # shared faces between two regions are found automatically
+#   si_ox: [region_1, region_2]
 """
 
 
 def spec_template(step_path: Path) -> str:
-    """The prefilled dialog text: discovered volume table (as comments)
-    plus a spec skeleton to edit."""
+    """The text prefilled into the dialog editor.
+
+    If a ready-made mapping spec ships next to the STEP file (the
+    bundled demos do: ``<stem>_import.yaml``), use it verbatim so Convert
+    works out of the box.  Otherwise scaffold a spec that claims *every*
+    discovered volume with its own region - conversion then never fails
+    on an unclaimed solid, and the user edits materials / merges regions
+    / adds contacts from a working starting point."""
+    step_path = Path(step_path)
+    sibling = step_path.with_name(f"{step_path.stem}_import.yaml")
+    if sibling.exists():
+        return sibling.read_text(encoding="utf-8")
+
     from ..geometry.step_import import _volume_table, discover_step
 
+    volumes = discover_step(step_path)
     table = "\n".join(f"# {line}" for line in
-                      _volume_table(discover_step(step_path)).splitlines())
-    return SPEC_TEMPLATE.format(step_name=Path(step_path).name,
-                                volume_table=table)
+                      _volume_table(volumes).splitlines())
+    regions = "\n".join(
+        f"  region_{v.tag}: {{select: {{volume: {v.tag}}}, "
+        f"material: Silicon}}" for v in volumes)
+    return SPEC_TEMPLATE.format(step_name=step_path.name,
+                                volume_table=table, regions=regions)
 
 
 class StepConvertDialog(QDialog):
@@ -91,7 +107,16 @@ class StepConvertDialog(QDialog):
         return self.step_path.with_name(f"{self.step_path.stem}_import.yaml")
 
     def _convert(self) -> None:
-        self.spec_path.write_text(self.editor.toPlainText(),
-                                  encoding="utf-8")
+        try:
+            self.spec_path.write_text(self.editor.toPlainText(),
+                                      encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(
+                self, "Cannot write spec",
+                f"Could not write {self.spec_path.name}:\n{exc}\n\n"
+                "The install folder may be read-only (e.g. Program "
+                "Files). Copy the app somewhere writable, or use Open to "
+                "point at a writable config folder.")
+            return
         self.convert_requested.emit(self.spec_path)
         self.accept()

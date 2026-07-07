@@ -362,18 +362,30 @@ class MainWindow(QMainWindow):
         proc.setArguments(prefix + ["import-step", str(spec_path),
                                     "-o", str(out_msh)])
         proc.setProcessChannelMode(QProcess.MergedChannels)
+        self._step_log: list[str] = []
         proc.readyReadStandardOutput.connect(
-            lambda: [self.log.append(f"[import-step] {ln}") for ln in
-                     bytes(proc.readAllStandardOutput()).decode(
-                         errors="replace").splitlines()])
+            lambda: self._on_step_output(proc))
         proc.finished.connect(lambda code, _s: self._step_converted(code))
         self.statusBar().showMessage("converting STEP to mesh...")
         proc.start()
 
+    def _on_step_output(self, proc) -> None:
+        for ln in bytes(proc.readAllStandardOutput()).decode(
+                errors="replace").splitlines():
+            self._step_log.append(ln)
+            self.log.append(f"[import-step] {ln}")
+
     def _step_converted(self, exit_code: int) -> None:
         if exit_code != 0:
-            self.statusBar().showMessage(
-                "STEP conversion failed (see log)")
+            self.statusBar().showMessage("STEP conversion failed")
+            # surface the error directly - the meaningful lines are the
+            # ValueError/Traceback tail from the subprocess
+            tail = "\n".join(self._step_log[-14:]) or "(no output captured)"
+            QMessageBox.warning(
+                self, "STEP conversion failed",
+                "The mesh conversion failed. Most often a solid was left "
+                "unmapped, or a contact bbox matched no face.\n\n"
+                "Details (also in the Log panel):\n\n" + tail)
             return
         self.populate_configs()  # the starter YAML appears in the list
         self.statusBar().showMessage(

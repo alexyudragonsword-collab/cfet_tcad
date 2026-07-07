@@ -46,8 +46,11 @@ def _spec(**overrides):
         "mesh_size": 2.0,
         "regions": {
             # label regex against the real (generic) STEP labels plus a
-            # plain volume-tag selector - two of the three selector kinds
-            "bulk": {"select": {"label": r"1\.1$"}, "material": "Silicon"},
+            # plain volume-tag selector - two of the three selector kinds.
+            # Match ".1" (the first solid) not "1.1": gmsh's OCC STEP
+            # writer uses a process-global session counter, so the
+            # leading number varies once other tests have written STEPs.
+            "bulk": {"select": {"label": r"\.1$"}, "material": "Silicon"},
             "gox": {"select": {"volume": 2}, "material": "Oxide"},
         },
         "contacts": {
