@@ -133,16 +133,51 @@ jobs:
           print("frozen GUI OK (stayed up, detached)")
           EOF
 
+      - name: Repackage into a clean, PyInstaller-style layout
+        run: |
+          # Nuitka's standalone dist is a flat pile of DLLs/pyds with the
+          # exe buried among them.  Mirror the PyInstaller onedir feel:
+          # tuck the whole runtime into app/ (the "_internal" equivalent -
+          # the loader still finds its DLLs, they all moved together) and
+          # leave only a clearly named launcher + readme at the top.
+          mkdir -p build/pkg
+          mv build/entry_nuitka.dist build/pkg/app
+          printf '%s\n' \
+            '@echo off' \
+            'start "" "%~dp0app\cfet-tcad.exe" %*' \
+            > "build/pkg/Launch STACKED CMOS TCAD.bat"
+          cat > "build/pkg/START HERE.txt" <<'TXT'
+          STACKED CMOS TCAD - Windows build (Nuitka)
+
+          中文:
+            双击 “Launch STACKED CMOS TCAD.bat” 启动图形界面。
+            也可进入 app 文件夹，双击 cfet-tcad.exe。
+            命令行用法: app\cfet-tcad.exe <命令>   (run / structure / doctor 等)
+            示例设计文件在 app\configs\ 目录。
+
+          English:
+            Double-click "Launch STACKED CMOS TCAD.bat" to start the GUI.
+            Or open the app folder and double-click cfet-tcad.exe.
+            Command line: app\cfet-tcad.exe <command>   (run / structure / doctor)
+            Example designs live in app\configs\.
+          TXT
+          # CRLF so Windows Notepad / cmd read the files cleanly
+          sed -i 's/$/\r/' "build/pkg/Launch STACKED CMOS TCAD.bat" \
+                           "build/pkg/START HERE.txt"
+          ls -la build/pkg
+          test -f "build/pkg/app/cfet-tcad.exe"
+          test -f "build/pkg/app/configs/cfet_3d.yaml"
+
       - uses: actions/upload-artifact@v4
         with:
           name: cfet-tcad-windows-x64-nuitka
-          path: build/entry_nuitka.dist
+          path: build/pkg
           compression-level: 6
 
       - name: Zip for release
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          cd build && 7z a ../cfet-tcad-windows-x64-nuitka.zip entry_nuitka.dist
+          cd build/pkg && 7z a ../../cfet-tcad-windows-x64-nuitka.zip *
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
