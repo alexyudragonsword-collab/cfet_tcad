@@ -228,6 +228,7 @@ fom.json、VTK（VisIt/ParaView）与 gmsh .msh。</p>
 <tr><td><code>idvg</code></td><td>对 <code>vd</code> 中每个漏压扫栅；提取 V<sub>t</sub>（恒流法与最大 g<sub>m</sub> 法）、SS、I<sub>on</sub>/I<sub>off</sub>，给两个 V<sub>d</sub> 时输出 DIBL。</td><td><code>vd</code>、<code>vg_start/stop/step</code></td></tr>
 <tr><td><code>idvd</code></td><td>对 <code>vg</code> 中每个栅压扫漏（输出特性）。</td><td><code>vg</code>、<code>vd_start/stop/step</code></td></tr>
 <tr><td><code>cfet_idvg</code></td><td>CFET 共栅扫描（CMOS 对偏置）；一次耦合求解同时产出 n/p 两条转移曲线与双份提取。</td><td><code>vdd</code>、<code>vg_*</code></td></tr>
+<tr><td><code>cfet_idvd</code></td><td>CFET 输出特性：对 <code>vg</code> 中每个固定共栅偏压,扫描漏压（nFET 漏 0&rarr;Vd、pFET 漏 Vdd&rarr;Vdd&minus;Vd）,同时给出 n/p 两器件的 Id&ndash;Vds。</td><td><code>vdd</code>、<code>vg</code>、<code>vd_*</code></td></tr>
 <tr><td><code>cfet_vtc</code></td><td>反相器电压传输特性：V<sub>out</sub> 为浮空电路节点自洽求解（器件/电路混合）。提取 V<sub>M</sub>、增益、噪声容限。</td><td><code>vdd</code>、<code>vg_*</code></td></tr>
 </table>
 

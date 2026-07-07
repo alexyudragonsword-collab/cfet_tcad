@@ -282,6 +282,57 @@ class Runner:
         write_json(self.out / "fom.json", results["fom"])
         return results
 
+    def run_cfet_idvd(self) -> dict:
+        """Output characteristics of the CFET stack: at each fixed common-
+        gate bias in ``sim.vg``, sweep the drains and record both devices'
+        Id-Vds.  Biased like a CMOS pair (nFET source grounded, pFET
+        source at vdd); the drain sweep runs the nFET drain 0 -> vd and
+        the pFET drain vdd -> vdd - vd, so Vds_n = +vd and Vds_p = -vd."""
+        sim = self.cfg.simulation
+        vdd = sim.vdd
+        scale = self.current_scale
+        results = {"curves": []}
+        rows = []
+        all_contacts = list(self.layout.contacts.keys())
+        ohmic = [c for c, r in self.layout.contacts.items()
+                 if self.layout.regions[r] == "Silicon"]
+
+        n_steps = max(1, round(abs(sim.vd_stop - sim.vd_start)
+                               / abs(sim.vd_step)))
+        self._announce(len(sim.vg) * (n_steps + 1))
+        self._ramp(["source_p"], vdd, sim.vd_step)  # pFET source rail
+
+        for vg in sim.vg:
+            self._ramp(self.gates, vg, sim.vg_step)  # fix the common gate
+            self._ramp(["drain_n"], sim.vd_start, sim.vd_step)
+            self._ramp(["drain_p"], vdd - sim.vd_start, sim.vd_step)
+
+            vd_list, id_n, id_p = [], [], []
+            for i in range(n_steps + 1):
+                vd = sim.vd_start + (sim.vd_stop - sim.vd_start) * i / n_steps
+                if i > 0:
+                    self._ramp(["drain_n"], vd, sim.vd_step)
+                    self._ramp(["drain_p"], vdd - vd, sim.vd_step)
+                p = measure(self.device, all_contacts, ohmic)
+                self._tick()
+                vd_list.append(vd)
+                id_n.append(p.currents["drain_n"] * scale)
+                id_p.append(p.currents["drain_p"] * scale)
+                rows.append({"vg_v": vg, "vd_v": vd,
+                             "id_n_a": id_n[-1], "id_p_a": id_p[-1]})
+            results["curves"].append(
+                {"vd": vd_list, "id": id_n, "vg": vg,
+                 "label": f"nFET Vg = {vg:+.2f} V"})
+            results["curves"].append(
+                {"vd": vd_list, "id": id_p, "vg": vg,
+                 "label": f"pFET Vg = {vg:+.2f} V"})
+
+        write_iv_csv(self.out / "cfet_idvd.csv", rows)
+        plot_idvd(self.out / "cfet_idvd.png", results["curves"],
+                  title=(f"{self.device} CFET Id-Vd (Vdd = {vdd} V, "
+                         f"{self._width_label()})"))
+        return results
+
     def run_cfet_vtc(self) -> dict:
         """Inverter voltage transfer characteristic of the CFET stack.
 
@@ -339,6 +390,8 @@ class Runner:
             return self.run_idvg()
         if self.cfg.simulation.type == "cfet_idvg":
             return self.run_cfet_idvg()
+        if self.cfg.simulation.type == "cfet_idvd":
+            return self.run_cfet_idvd()
         if self.cfg.simulation.type == "cfet_vtc":
             return self.run_cfet_vtc()
         return self.run_idvd()

@@ -35,3 +35,14 @@ def test_bad_mobility_model_rejected(tmp_path):
     p.write_text("physics:\n  mobility_model: quantum_magic\n")
     with pytest.raises(ValueError, match="mobility_model"):
         load_config(p)
+
+
+def test_simulation_types_accepted_and_rejected(tmp_path):
+    for t in ("idvg", "idvd", "cfet_idvg", "cfet_idvd", "cfet_vtc"):
+        p = tmp_path / "c.yaml"
+        p.write_text(f"simulation:\n  type: {t}\n")
+        assert load_config(p).simulation.type == t
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("simulation:\n  type: cfet_magic\n")
+    with pytest.raises(ValueError, match="simulation.type"):
+        load_config(bad)

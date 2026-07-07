@@ -53,7 +53,8 @@ CHOICES = {
     ("physics", "mobility_model"): list(MOBILITY_MODELS),
     ("physics", "quantum_model"): list(QUANTUM_MODELS),
     ("physics", "oxide_material"): ["SiO2", "HfO2"],
-    ("simulation", "type"): ["idvg", "idvd", "cfet_idvg", "cfet_vtc"],
+    ("simulation", "type"): ["idvg", "idvd", "cfet_idvg", "cfet_idvd",
+                             "cfet_vtc"],
 }
 
 

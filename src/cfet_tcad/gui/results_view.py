@@ -104,6 +104,7 @@ class ResultsView(QWidget):
         log = self.log_toggle.isChecked()
         for name, plotter in (("idvg.csv", self._plot_idvg),
                               ("cfet_idvg.csv", self._plot_cfet),
+                              ("cfet_idvd.csv", self._plot_cfet_idvd),
                               ("idvd.csv", self._plot_idvd),
                               ("vtc.csv", self._plot_vtc)):
             path = self._dir / name
@@ -147,6 +148,17 @@ class ResultsView(QWidget):
         plot(x, [abs(r["id_n_a"]) for r in rows], "o-", ms=3, label="nFET")
         plot(x, [abs(r["id_p_a"]) for r in rows], "o-", ms=3, label="pFET")
         ax.set_xlabel("Vg [V]")
+        ax.set_ylabel("|Id| [A]")
+
+    def _plot_cfet_idvd(self, ax, rows, log):
+        # output characteristics: one nFET + one pFET curve per fixed Vg
+        for vg, pts in sorted(self._series(rows, "vg_v").items()):
+            x = [p["vd_v"] for p in pts]
+            ax.plot(x, [abs(p["id_n_a"]) for p in pts], "o-", ms=3,
+                    label=f"nFET Vg={vg:+.2f}")
+            ax.plot(x, [abs(p["id_p_a"]) for p in pts], "s--", ms=3,
+                    label=f"pFET Vg={vg:+.2f}")
+        ax.set_xlabel("Vd [V]")
         ax.set_ylabel("|Id| [A]")
 
     def _plot_vtc(self, ax, rows, log):

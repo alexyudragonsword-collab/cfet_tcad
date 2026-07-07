@@ -259,6 +259,7 @@ inversion:</p>
 <tr><td><code>idvg</code></td><td>Gate sweep at each drain bias in <code>vd</code>; extracts V<sub>t</sub> (constant-current and max-g<sub>m</sub>), SS, I<sub>on</sub>/I<sub>off</sub>, and DIBL when two V<sub>d</sub> values are given.</td><td><code>vd</code>, <code>vg_start/stop/step</code></td></tr>
 <tr><td><code>idvd</code></td><td>Drain sweep at each gate bias in <code>vg</code> (output characteristics).</td><td><code>vg</code>, <code>vd_start/stop/step</code></td></tr>
 <tr><td><code>cfet_idvg</code></td><td>CFET common-gate sweep under CMOS-pair bias; one coupled solve yields both transfer curves and both FOM sets.</td><td><code>vdd</code>, <code>vg_*</code></td></tr>
+<tr><td><code>cfet_idvd</code></td><td>CFET output characteristics: at each fixed common-gate bias in <code>vg</code>, sweep the drains (nFET drain 0&rarr;Vd, pFET drain Vdd&rarr;Vdd&minus;Vd) for both devices' Id&ndash;Vds.</td><td><code>vdd</code>, <code>vg</code>, <code>vd_*</code></td></tr>
 <tr><td><code>cfet_vtc</code></td><td>Inverter voltage transfer characteristic: V<sub>out</sub> is a floating circuit node solved self-consistently (mixed device/circuit). Extracts V<sub>M</sub>, gain, noise margins.</td><td><code>vdd</code>, <code>vg_*</code></td></tr>
 </table>
 

@@ -114,8 +114,9 @@ def test_sim_type_contact_mismatch_raises_clear_error(tmp_path):
     cfg.simulation.type = "idvg"
     with pytest.raises(ValueError, match="cfet_idvg"):
         runner._validate_sim_contacts()
-    cfg.simulation.type = "cfet_idvg"  # the right type passes
-    runner._validate_sim_contacts()
+    for ok in ("cfet_idvg", "cfet_idvd", "cfet_vtc"):  # CFET types pass
+        cfg.simulation.type = ok
+        runner._validate_sim_contacts()
 
     # a genuine single device (source/drain/gate) accepts idvd/idvg
     single = MeshLayout(

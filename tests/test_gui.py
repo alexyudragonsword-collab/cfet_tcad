@@ -646,3 +646,20 @@ def test_results_view_loads_fom(qapp, tmp_path):
     view.load_dir(tmp_path)
     assert view.fom_table.rowCount() == 1
     assert "74" in view.fom_table.item(0, 1).text()
+
+
+def test_results_view_renders_cfet_idvd(qapp, tmp_path):
+    from cfet_tcad.gui.results_view import ResultsView
+
+    # a cfet_idvd run: per-fixed-Vg nFET/pFET output characteristics
+    (tmp_path / "cfet_idvd.csv").write_text(
+        "vg_v,vd_v,id_n_a,id_p_a\n"
+        "0.7,0.0,0,0\n0.7,0.35,3.0e-5,-7e-11\n0.7,0.7,3.2e-5,-1.7e-10\n")
+    view = ResultsView()
+    view.load_dir(tmp_path)
+    ax = view.figure.axes[0]
+    # both device families are drawn, x axis is Vd
+    labels = [ln.get_label() for ln in ax.get_lines()]
+    assert any("nFET" in x for x in labels)
+    assert any("pFET" in x for x in labels)
+    assert ax.get_xlabel() == "Vd [V]"

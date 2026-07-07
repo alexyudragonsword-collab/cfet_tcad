@@ -41,7 +41,7 @@ class PhysicsConfig:
 
 @dataclass
 class SimulationConfig:
-    type: str = "idvg"     # "idvg" | "idvd" | "cfet_idvg" | "cfet_vtc"
+    type: str = "idvg"     # idvg | idvd | cfet_idvg | cfet_idvd | cfet_vtc
     vd: list = field(default_factory=lambda: [0.05, 0.7])  # idvg: Vd values
     vg: list = field(default_factory=lambda: [0.7])        # idvd: Vg values
     vg_start: float = 0.0
@@ -54,10 +54,11 @@ class SimulationConfig:
     min_step: float = 1e-4
 
     def __post_init__(self):
-        if self.type not in ("idvg", "idvd", "cfet_idvg", "cfet_vtc"):
+        if self.type not in ("idvg", "idvd", "cfet_idvg", "cfet_idvd",
+                             "cfet_vtc"):
             raise ValueError(
-                "simulation.type must be 'idvg', 'idvd', 'cfet_idvg' "
-                "or 'cfet_vtc'")
+                "simulation.type must be 'idvg', 'idvd', 'cfet_idvg', "
+                "'cfet_idvd' or 'cfet_vtc'")
 
 
 @dataclass

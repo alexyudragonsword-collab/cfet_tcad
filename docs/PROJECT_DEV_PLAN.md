@@ -76,12 +76,15 @@ Python + DEVSIM（漂移扩散求解器）+ gmsh（参数化网格）+ VTK/VisIt
 
 ## 2. 当前状态一览
 
-- **源码**：`src/cfet_tcad/` 约 6200 行（49 个模块文件）
-- **测试**：`tests/` **116 个测试**，含 5+ 组位精确交叉验证
+- **源码**：`src/cfet_tcad/` 约 6510 行（49 个模块文件）
+- **测试**：`tests/` **120 个测试**，含 5+ 组位精确交叉验证
 - **示例配置**：`configs/` 20 个 YAML（2D/3D 纳米片、CFET 堆叠、SiGe、
   量子修正、VTC、论文复现 5 个）+ STEP 导入示例两套六件
   （FBC/SBC 各 `.step` + 映射 spec + 运行配置）
-- **提交数**：58（主分支 `claude/cfet-tcad-simulation-zh2kfo`）
+- **提交数**：62（主分支 `claude/cfet-tcad-simulation-zh2kfo`）
+- **仿真类型**：`idvg` / `idvd`(单器件)+ `cfet_idvg` / `cfet_idvd` /
+  `cfet_vtc`(CFET 堆叠:共栅转移 / 输出特性 / 反相器 VTC);仿真类型
+  与器件接触名不匹配时(如对 CFET 用 idvd)提前给出可读报错
 - **CI**：Linux 全套 pytest 自动跑（每次 push）；Windows 打包（PyInstaller
   + Nuitka 两条独立跑道）**手动触发**（`workflow_dispatch` 或 `v*` 标签）
 - **GUI**：PySide6 桌面工作台，单窗口三区复合布局（Experiments 表
