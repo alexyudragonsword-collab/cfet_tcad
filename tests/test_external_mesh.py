@@ -90,6 +90,43 @@ def test_msh_version_check(tmp_path):
         read_msh_physical_names(bad)
 
 
+def test_sim_type_contact_mismatch_raises_clear_error(tmp_path):
+    """A single-device sweep on a CFET mesh (source_n/drain_n/...) used
+    to crash deep in DEVSIM with 'cannot find parameter drain_bias'.
+    The runner now fails early with an actionable message."""
+    from cfet_tcad.geometry.base import MeshLayout
+    from cfet_tcad.workflow.runner import Runner
+
+    cfet = MeshLayout(
+        dimension=3,
+        regions={"silicon_n": "Silicon", "oxide_n": "Oxide",
+                 "silicon_p": "Silicon", "oxide_p": "Oxide"},
+        contacts={"source_n": "silicon_n", "drain_n": "silicon_n",
+                  "gate_n": "oxide_n", "source_p": "silicon_p",
+                  "drain_p": "silicon_p", "gate_p": "oxide_p"})
+    cfg = load_config("configs/paper_fbc_cfet_3d.yaml")
+    runner = Runner(cfg, tmp_path)
+    runner.layout = cfet
+
+    cfg.simulation.type = "idvd"       # single-device sweep on a CFET
+    with pytest.raises(ValueError, match="(?s)drain.*cfet_idvg"):
+        runner._validate_sim_contacts()
+    cfg.simulation.type = "idvg"
+    with pytest.raises(ValueError, match="cfet_idvg"):
+        runner._validate_sim_contacts()
+    cfg.simulation.type = "cfet_idvg"  # the right type passes
+    runner._validate_sim_contacts()
+
+    # a genuine single device (source/drain/gate) accepts idvd/idvg
+    single = MeshLayout(
+        dimension=2, regions={"silicon": "Silicon", "oxide": "Oxide"},
+        contacts={"source": "silicon", "drain": "silicon",
+                  "gate": "oxide"})
+    runner.layout = single
+    cfg.simulation.type = "idvd"
+    runner._validate_sim_contacts()
+
+
 def _load(tmp_path, raw):
     p = tmp_path / "cfg.yaml"
     p.write_text(yaml.safe_dump(raw), encoding="utf-8")

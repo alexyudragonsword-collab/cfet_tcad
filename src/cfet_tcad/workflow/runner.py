@@ -48,6 +48,31 @@ class Runner:
         return [c for c, r in self.layout.contacts.items()
                 if self.layout.regions[r] == "Oxide"]
 
+    def _validate_sim_contacts(self) -> None:
+        """A single-device sweep (idvg/idvd) drives contacts literally
+        named source/drain/gate; a CFET stack drives source_n/drain_n/
+        source_p/drain_p.  Fail early with a clear message instead of a
+        cryptic DEVSIM "cannot find parameter drain_bias" mid-solve when
+        the wrong simulation type is used on an imported mesh."""
+        sim = self.cfg.simulation.type
+        have = set(self.layout.contacts)
+        if sim in ("idvg", "idvd"):
+            needed = ["source", "drain"]
+        else:  # cfet_idvg / cfet_vtc
+            needed = ["source_n", "drain_n", "source_p", "drain_p"]
+        missing = [c for c in needed if c not in have]
+        gate_ok = bool(self.gates)
+        if missing or not gate_ok:
+            hint = ("A CFET stack (source_n/drain_n/source_p/drain_p) "
+                    "uses simulation type 'cfet_idvg' or 'cfet_vtc'; a "
+                    "single device (source/drain/gate) uses 'idvg' or "
+                    "'idvd'.")
+            problem = (f"missing contact(s) {missing}" if missing
+                       else "no gate contact (on an oxide region)")
+            raise ValueError(
+                f"simulation type '{sim}' cannot run on this device: "
+                f"{problem}. Device contacts are {sorted(have)}. {hint}")
+
     @property
     def current_scale(self) -> float:
         """2D solutions are per cm of depth and need the effective width;
@@ -308,6 +333,7 @@ class Runner:
 
     def run(self) -> dict:
         msh = self.build_mesh()
+        self._validate_sim_contacts()  # clear error before any DEVSIM work
         self.setup(msh)
         if self.cfg.simulation.type == "idvg":
             return self.run_idvg()
