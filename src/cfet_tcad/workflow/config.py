@@ -59,6 +59,19 @@ class SimulationConfig:
             raise ValueError(
                 "simulation.type must be 'idvg', 'idvd', 'cfet_idvg', "
                 "'cfet_idvd' or 'cfet_vtc'")
+        if self.vg_step == 0 or self.vd_step == 0:
+            raise ValueError("vg_step and vd_step must be nonzero")
+        if self.min_step <= 0:
+            raise ValueError("min_step must be positive")
+        # the bias list the selected experiment iterates over must be
+        # non-empty, or the run solves nothing and fails writing the CSV
+        if self.type == "idvg" and not self.vd:
+            raise ValueError(
+                "simulation.vd must list at least one Vd value for idvg")
+        if self.type in ("idvd", "cfet_idvd") and not self.vg:
+            raise ValueError(
+                f"simulation.vg must list at least one Vg value "
+                f"for {self.type}")
 
 
 @dataclass
@@ -67,10 +80,18 @@ class OutputConfig:
     vtk: bool = True
     vtk_stride: int = 5  # write every Nth bias point (plus first/last)
 
+    def __post_init__(self):
+        if self.vtk_stride < 1:
+            raise ValueError("vtk_stride must be >= 1")
+
 
 @dataclass
 class ExtractConfig:
     icrit_a: float = 1e-8  # constant-current Vt criterion, width-scaled
+
+    def __post_init__(self):
+        if self.icrit_a <= 0:
+            raise ValueError("icrit_a must be positive")
 
 
 @dataclass
@@ -105,6 +126,30 @@ def _build(cls, data: dict, section: str):
         return cls(**_coerce(cls, data or {}))
     except TypeError as exc:
         raise ValueError(f"invalid key in '{section}' section: {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"in '{section}' section: {exc}") from exc
+
+
+def check_sim_structure(cfg: "RunConfig") -> None:
+    """Catch a sim-type / structure mismatch before a mesh is ever built.
+    Called by Runner.run() rather than build_config: structure-only flows
+    (mesh preview) legitimately pair a CFET structure with the default
+    sim type.  'external' meshes are checked later against their actual
+    contact names (Runner._validate_sim_contacts)."""
+    sim, structure = cfg.simulation.type, cfg.device.structure
+    if structure == "external":
+        return
+    is_cfet_sim = sim.startswith("cfet_")
+    is_cfet_structure = structure in ("cfet_2d", "cfet_3d")
+    if is_cfet_sim and not is_cfet_structure:
+        raise ValueError(
+            f"simulation type '{sim}' needs a CFET stack, but "
+            f"device.structure is '{structure}' (use cfet_2d/cfet_3d, "
+            f"or 'idvg'/'idvd' for a single device)")
+    if not is_cfet_sim and is_cfet_structure:
+        raise ValueError(
+            f"device.structure '{structure}' is a CFET stack; use a "
+            f"cfet_* simulation type instead of '{sim}'")
 
 
 def build_config(raw: dict) -> RunConfig:

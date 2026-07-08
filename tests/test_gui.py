@@ -527,9 +527,9 @@ def test_about_dialog_and_version(qapp):
     import cfet_tcad
     from cfet_tcad.gui.about_dialog import ABOUT_HTML, AboutDialog
 
-    assert cfet_tcad.__version__ == "0.5"
+    assert cfet_tcad.__version__ == "0.5.2"
     assert cfet_tcad.__author__ == "Yu Rui"
-    assert "Yu Rui" in ABOUT_HTML and "0.5" in ABOUT_HTML
+    assert "Yu Rui" in ABOUT_HTML and cfet_tcad.__version__ in ABOUT_HTML
     # copyright is surfaced in About and available as package metadata
     assert cfet_tcad.__copyright__ == "Copyright © 2026 Yu Rui"
     assert cfet_tcad.__copyright__ in ABOUT_HTML
@@ -538,11 +538,11 @@ def test_about_dialog_and_version(qapp):
     assert dlg.windowTitle() == f"About {cfet_tcad.__app_name__}"
     dlg.close()
 
-    # pyproject stays in sync with the package version
-    import re
+    # pyproject single-sources the version from the package
     from pathlib import Path
     text = Path("pyproject.toml").read_text()
-    assert re.search(r'^version = "0\.5"$', text, re.M)
+    assert 'dynamic = ["version"]' in text
+    assert 'attr = "cfet_tcad.__version__"' in text
     # the license we advertise actually ships
     assert Path("LICENSE").exists()
     assert "Apache License" in Path("LICENSE").read_text()
@@ -663,3 +663,137 @@ def test_results_view_renders_cfet_idvd(qapp, tmp_path):
     assert any("nFET" in x for x in labels)
     assert any("pFET" in x for x in labels)
     assert ax.get_xlabel() == "Vd [V]"
+
+
+# --- live QProcess paths (fake CLI: instant python -c subprocesses) --------
+
+def _live_queue(tmp_path):
+    from cfet_tcad.gui.experiment_table import Experiment, ExperimentModel
+    from cfet_tcad.gui.run_queue import RunQueue
+
+    model = ExperimentModel()
+    (tmp_path / "c.yaml").write_text("device: {name: fake}\n")
+    exp = Experiment(name="fake", config_path=tmp_path / "c.yaml",
+                     out_dir=tmp_path)
+    model.add(exp)
+    return model, RunQueue(model, max_parallel=1), exp
+
+
+def _drain(qapp, exp, timeout_s=15.0):
+    import time
+    deadline = time.time() + timeout_s
+    while exp.status in ("queued", "running") and time.time() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+    # deliver the pending QProcess deleteLater while its parent queue is
+    # still alive - leaking it into the next test's processEvents would
+    # dereference a freed object once this test's queue is GC'd
+    for _ in range(3):
+        qapp.processEvents()
+
+
+def test_live_process_success_folds_progress(qapp, tmp_path, monkeypatch):
+    import sys
+
+    from cfet_tcad.gui import run_queue as rq
+
+    model, queue, exp = _live_queue(tmp_path)
+    script = ("import sys;"
+              "print('@@PROGRESS 0/2', flush=True);"
+              "print('@@PROGRESS 1/2', flush=True);"
+              "print('solver chatter', flush=True);"
+              "print('@@PROGRESS 2/2', flush=True)")
+    monkeypatch.setattr(rq, "cli_command",
+                        lambda: (sys.executable, ["-c", script]))
+    lines = []
+    queue.log_line.connect(lines.append)
+    queue.start(exp)
+    _drain(qapp, exp)
+    assert exp.status == "done"
+    assert exp.progress == 1.0
+    assert any("solver chatter" in ln for ln in lines)
+    assert not queue._procs  # slot freed
+
+
+def test_live_process_failure_emits_tail(qapp, tmp_path, monkeypatch):
+    import sys
+
+    from cfet_tcad.gui import run_queue as rq
+
+    model, queue, exp = _live_queue(tmp_path)
+    script = ("import sys;"
+              "print('Traceback: boom', flush=True);"
+              "sys.exit(3)")
+    monkeypatch.setattr(rq, "cli_command",
+                        lambda: (sys.executable, ["-c", script]))
+    failures = []
+    queue.experiment_failed.connect(lambda e, t: failures.append((e, t)))
+    queue.start(exp)
+    _drain(qapp, exp)
+    assert exp.status == "failed"
+    assert failures and "boom" in failures[0][1]
+    assert not queue._procs
+
+
+def test_failed_to_start_frees_slot_and_marks_failed(qapp, tmp_path,
+                                                     monkeypatch):
+    from cfet_tcad.gui import run_queue as rq
+
+    model, queue, exp = _live_queue(tmp_path)
+    monkeypatch.setattr(rq, "cli_command",
+                        lambda: ("/nonexistent/cfet-tcad-no-such-binary", []))
+    failures = []
+    queue.experiment_failed.connect(lambda e, t: failures.append((e, t)))
+    queue.start(exp)
+    _drain(qapp, exp, timeout_s=5.0)
+    assert exp.status == "failed"
+    assert failures and "could not start" in failures[0][1]
+    assert not queue._procs  # the pool slot is not leaked
+
+
+def test_touch_after_row_removed_is_noop(qapp, tmp_path):
+    model, queue, exp = _live_queue(tmp_path)
+    model.remove(0)
+    queue._touch(exp)  # must not raise ValueError
+
+
+def test_close_event_stops_running_jobs(qapp, tmp_path, monkeypatch):
+    import sys
+
+    from PySide6.QtGui import QCloseEvent
+    from PySide6.QtWidgets import QMessageBox
+
+    from cfet_tcad.gui import run_queue as rq
+    from cfet_tcad.gui.main_window import MainWindow
+
+    win = MainWindow(project_root=tmp_path)
+    (tmp_path / "configs").mkdir(exist_ok=True)
+    cfg = tmp_path / "configs" / "a.yaml"
+    cfg.write_text("device: {name: a}\n")
+    exp = win.add_config_to_experiments(cfg)
+    monkeypatch.setattr(rq, "cli_command",
+                        lambda: (sys.executable,
+                                 ["-c", "import time; time.sleep(60)"]))
+    win.queue.start(exp)
+    qapp.processEvents()
+    assert exp.status == "running"
+
+    # decline: the window stays open and the job keeps running
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.No))
+    ev = QCloseEvent()
+    win.closeEvent(ev)
+    assert not ev.isAccepted()
+    assert exp.status == "running"
+
+    # accept: the queue is shut down before the window closes
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.Yes))
+    ev = QCloseEvent()
+    win.closeEvent(ev)
+    assert ev.isAccepted()
+    assert exp.status == "stopped"
+    win.close()
+    for _ in range(3):  # flush kill/deleteLater while the window is alive
+        qapp.processEvents()
+    assert not win.queue._procs

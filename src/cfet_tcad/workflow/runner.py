@@ -18,8 +18,8 @@ from ..io import (
     write_sweep_collection,
 )
 from ..meshio_devsim import load_mesh
-from ..solve import measure, ramp_biases, setup_equilibrium
-from .config import RunConfig
+from ..solve import ConvergenceError, measure, ramp_biases, setup_equilibrium
+from .config import RunConfig, check_sim_structure
 
 
 class Runner:
@@ -122,29 +122,46 @@ class Runner:
         all_contacts = list(self.layout.contacts.keys())
         ohmic = [c for c, r in self.layout.contacts.items()
                  if self.layout.regions[r] == "Silicon"]
-        self._ramp(contacts, start, step)
-
         n_steps = max(1, round(abs(stop - start) / abs(step)))
         snapshots = []
         points = []
-        for i in range(n_steps + 1):
-            v = start + (stop - start) * i / n_steps
-            if i > 0:
-                self._ramp(contacts, v, step)
-            points.append(measure(self.device, all_contacts, ohmic))
-            self._tick()
-            if vtk_tag and self.cfg.output.vtk and (
-                    i % self.cfg.output.vtk_stride == 0 or i == n_steps):
-                prefix = self.out / "vtk" / f"{vtk_tag}_{i:03d}"
-                snapshots.append((v, write_snapshot(prefix)))
-        if snapshots:
-            write_sweep_collection(self.out / "vtk" / f"{vtk_tag}.pvd",
-                                   snapshots)
+        try:
+            self._ramp(contacts, start, step)
+            for i in range(n_steps + 1):
+                v = start + (stop - start) * i / n_steps
+                if i > 0:
+                    self._ramp(contacts, v, step)
+                points.append(measure(self.device, all_contacts, ohmic))
+                self._tick()
+                if vtk_tag and self.cfg.output.vtk and (
+                        i % self.cfg.output.vtk_stride == 0 or i == n_steps):
+                    prefix = self.out / "vtk" / f"{vtk_tag}_{i:03d}"
+                    snapshots.append((v, write_snapshot(prefix)))
+        except ConvergenceError as exc:
+            # hand the completed points to the caller so the experiment
+            # can flush partial results before propagating the failure
+            exc.partial_points = points
+            raise
+        finally:
+            if snapshots:
+                write_sweep_collection(self.out / "vtk" / f"{vtk_tag}.pvd",
+                                       snapshots)
         return points
 
     @staticmethod
     def _tag(name: str, value: float) -> str:
         return f"{name}{value:+.3f}".replace("+", "p").replace("-", "m")
+
+    def _flush_partial(self, name: str, rows: list,
+                       exc: ConvergenceError) -> None:
+        """A mid-sweep convergence failure must not discard the bias points
+        already solved: write what we have before the error propagates."""
+        if not rows:
+            return
+        path = self.out / name
+        write_iv_csv(path, rows)
+        print(f"convergence failure -- saved {len(rows)} completed "
+              f"point(s) to {path} ({exc})", flush=True)
 
     # --- progress reporting (machine-readable, parsed by the GUI) ---------
 
@@ -170,26 +187,34 @@ class Runner:
                            / abs(sim.vg_step))) + 1
         self._announce(len(sim.vd) * pts)
 
-        for vd in sim.vd:
-            self._ramp(self.gates, sim.vg_start, sim.vg_step)
-            self._ramp(["drain"], vd, sim.vd_step)
+        try:
+            for vd in sim.vd:
+                self._ramp(self.gates, sim.vg_start, sim.vg_step)
+                self._ramp(["drain"], vd, sim.vd_step)
 
-            points = self._sweep(self.gates, sim.vg_start,
-                                 sim.vg_stop, sim.vg_step,
-                                 vtk_tag=self._tag("idvg_vd", vd))
+                points = self._sweep(self.gates, sim.vg_start,
+                                     sim.vg_stop, sim.vg_step,
+                                     vtk_tag=self._tag("idvg_vd", vd))
 
-            vg = [p.biases[self.gates[0]] for p in points]
-            id_a = [p.currents["drain"] * scale for p in points]
-            label = f"Vd = {vd:+.2f} V"
-            results["curves"].append(
-                {"vg": vg, "id": id_a, "vd": vd, "label": label})
-            rows += [{"vg_v": g, "vd_v": vd, "id_a": i,
+                vg = [p.biases[self.gates[0]] for p in points]
+                id_a = [p.currents["drain"] * scale for p in points]
+                label = f"Vd = {vd:+.2f} V"
+                results["curves"].append(
+                    {"vg": vg, "id": id_a, "vd": vd, "label": label})
+                rows += [{"vg_v": g, "vd_v": vd, "id_a": i,
+                          "is_a": p.currents["source"] * scale}
+                         for g, i, p in zip(vg, id_a, points)]
+
+                results["fom"][label] = extract_idvg_fom(
+                    vg, id_a, polarity=dev.polarity,
+                    icrit=self.cfg.extract.icrit_a)
+        except ConvergenceError as exc:
+            rows += [{"vg_v": p.biases[self.gates[0]], "vd_v": vd,
+                      "id_a": p.currents["drain"] * scale,
                       "is_a": p.currents["source"] * scale}
-                     for g, i, p in zip(vg, id_a, points)]
-
-            results["fom"][label] = extract_idvg_fom(
-                vg, id_a, polarity=dev.polarity,
-                icrit=self.cfg.extract.icrit_a)
+                     for p in getattr(exc, "partial_points", [])]
+            self._flush_partial("idvg.csv", rows, exc)
+            raise
 
         if len(sim.vd) >= 2:
             vds = sorted(sim.vd, key=abs)
@@ -213,21 +238,29 @@ class Runner:
                            / abs(sim.vd_step))) + 1
         self._announce(len(sim.vg) * pts)
 
-        for vg in sim.vg:
-            self._ramp(["drain"], sim.vd_start, sim.vd_step)
-            self._ramp(self.gates, vg, sim.vg_step)
+        try:
+            for vg in sim.vg:
+                self._ramp(["drain"], sim.vd_start, sim.vd_step)
+                self._ramp(self.gates, vg, sim.vg_step)
 
-            points = self._sweep(["drain"], sim.vd_start, sim.vd_stop,
-                                 sim.vd_step,
-                                 vtk_tag=self._tag("idvd_vg", vg))
-            vd = [p.biases["drain"] for p in points]
-            id_a = [p.currents["drain"] * scale for p in points]
-            label = f"Vg = {vg:+.2f} V"
-            results["curves"].append(
-                {"vd": vd, "id": id_a, "vg": vg, "label": label})
-            rows += [{"vg_v": vg, "vd_v": d, "id_a": i,
+                points = self._sweep(["drain"], sim.vd_start, sim.vd_stop,
+                                     sim.vd_step,
+                                     vtk_tag=self._tag("idvd_vg", vg))
+                vd = [p.biases["drain"] for p in points]
+                id_a = [p.currents["drain"] * scale for p in points]
+                label = f"Vg = {vg:+.2f} V"
+                results["curves"].append(
+                    {"vd": vd, "id": id_a, "vg": vg, "label": label})
+                rows += [{"vg_v": vg, "vd_v": d, "id_a": i,
+                          "is_a": p.currents["source"] * scale}
+                         for d, i, p in zip(vd, id_a, points)]
+        except ConvergenceError as exc:
+            rows += [{"vg_v": vg, "vd_v": p.biases["drain"],
+                      "id_a": p.currents["drain"] * scale,
                       "is_a": p.currents["source"] * scale}
-                     for d, i, p in zip(vd, id_a, points)]
+                     for p in getattr(exc, "partial_points", [])]
+            self._flush_partial("idvd.csv", rows, exc)
+            raise
 
         write_iv_csv(self.out / "idvd.csv", rows)
         plot_idvd(self.out / "idvd.png", results["curves"],
@@ -253,10 +286,20 @@ class Runner:
 
         self._announce(max(1, round(abs(sim.vg_stop - sim.vg_start)
                                     / abs(sim.vg_step))) + 1)
-        self._ramp(["source_p"], vdd, sim.vd_step)
-        self._ramp(["drain_n"], vdd, sim.vd_step)
-        points = self._sweep(self.gates, sim.vg_start, sim.vg_stop,
-                             sim.vg_step, vtk_tag="cfet_idvg")
+        try:
+            self._ramp(["source_p"], vdd, sim.vd_step)
+            self._ramp(["drain_n"], vdd, sim.vd_step)
+            points = self._sweep(self.gates, sim.vg_start, sim.vg_stop,
+                                 sim.vg_step, vtk_tag="cfet_idvg")
+        except ConvergenceError as exc:
+            rows = [{"vg_v": p.biases[self.gates[0]],
+                     "id_n_a": p.currents["drain_n"] * scale,
+                     "id_p_a": p.currents["drain_p"] * scale,
+                     "is_n_a": p.currents["source_n"] * scale,
+                     "is_p_a": p.currents["source_p"] * scale}
+                    for p in getattr(exc, "partial_points", [])]
+            self._flush_partial("cfet_idvg.csv", rows, exc)
+            raise
 
         vg = [p.biases[self.gates[0]] for p in points]
         id_n = [p.currents["drain_n"] * scale for p in points]
@@ -300,32 +343,37 @@ class Runner:
         n_steps = max(1, round(abs(sim.vd_stop - sim.vd_start)
                                / abs(sim.vd_step)))
         self._announce(len(sim.vg) * (n_steps + 1))
-        self._ramp(["source_p"], vdd, sim.vd_step)  # pFET source rail
+        try:
+            self._ramp(["source_p"], vdd, sim.vd_step)  # pFET source rail
 
-        for vg in sim.vg:
-            self._ramp(self.gates, vg, sim.vg_step)  # fix the common gate
-            self._ramp(["drain_n"], sim.vd_start, sim.vd_step)
-            self._ramp(["drain_p"], vdd - sim.vd_start, sim.vd_step)
+            for vg in sim.vg:
+                self._ramp(self.gates, vg, sim.vg_step)  # fix common gate
+                self._ramp(["drain_n"], sim.vd_start, sim.vd_step)
+                self._ramp(["drain_p"], vdd - sim.vd_start, sim.vd_step)
 
-            vd_list, id_n, id_p = [], [], []
-            for i in range(n_steps + 1):
-                vd = sim.vd_start + (sim.vd_stop - sim.vd_start) * i / n_steps
-                if i > 0:
-                    self._ramp(["drain_n"], vd, sim.vd_step)
-                    self._ramp(["drain_p"], vdd - vd, sim.vd_step)
-                p = measure(self.device, all_contacts, ohmic)
-                self._tick()
-                vd_list.append(vd)
-                id_n.append(p.currents["drain_n"] * scale)
-                id_p.append(p.currents["drain_p"] * scale)
-                rows.append({"vg_v": vg, "vd_v": vd,
-                             "id_n_a": id_n[-1], "id_p_a": id_p[-1]})
-            results["curves"].append(
-                {"vd": vd_list, "id": id_n, "vg": vg,
-                 "label": f"nFET Vg = {vg:+.2f} V"})
-            results["curves"].append(
-                {"vd": vd_list, "id": id_p, "vg": vg,
-                 "label": f"pFET Vg = {vg:+.2f} V"})
+                vd_list, id_n, id_p = [], [], []
+                for i in range(n_steps + 1):
+                    vd = (sim.vd_start
+                          + (sim.vd_stop - sim.vd_start) * i / n_steps)
+                    if i > 0:
+                        self._ramp(["drain_n"], vd, sim.vd_step)
+                        self._ramp(["drain_p"], vdd - vd, sim.vd_step)
+                    p = measure(self.device, all_contacts, ohmic)
+                    self._tick()
+                    vd_list.append(vd)
+                    id_n.append(p.currents["drain_n"] * scale)
+                    id_p.append(p.currents["drain_p"] * scale)
+                    rows.append({"vg_v": vg, "vd_v": vd,
+                                 "id_n_a": id_n[-1], "id_p_a": id_p[-1]})
+                results["curves"].append(
+                    {"vd": vd_list, "id": id_n, "vg": vg,
+                     "label": f"nFET Vg = {vg:+.2f} V"})
+                results["curves"].append(
+                    {"vd": vd_list, "id": id_p, "vg": vg,
+                     "label": f"pFET Vg = {vg:+.2f} V"})
+        except ConvergenceError as exc:
+            self._flush_partial("cfet_idvd.csv", rows, exc)
+            raise
 
         write_iv_csv(self.out / "cfet_idvd.csv", rows)
         plot_idvd(self.out / "cfet_idvd.png", results["curves"],
@@ -349,27 +397,34 @@ class Runner:
         vdd = sim.vdd
         scale = self.current_scale
 
-        self._ramp(["source_p"], vdd, sim.vd_step)
-
         n_steps = max(1, round(abs(sim.vg_stop - sim.vg_start)
                                / abs(sim.vg_step)))
         self._announce(n_steps + 1)
         vin, vout, i_dd = [], [], []
         snapshots = []
-        for i in range(n_steps + 1):
-            v = sim.vg_start + (sim.vg_stop - sim.vg_start) * i / n_steps
-            if i > 0:
-                self._ramp(self.gates, v, sim.vg_step)
-            vin.append(v)
-            vout.append(devsim.get_circuit_node_value(node="vout"))
-            i_dd.append(contact_current(self.device, "source_p") * scale)
-            self._tick()
-            if self.cfg.output.vtk and (
-                    i % self.cfg.output.vtk_stride == 0 or i == n_steps):
-                prefix = self.out / "vtk" / f"vtc_{i:03d}"
-                snapshots.append((v, write_snapshot(prefix)))
-        if snapshots:
-            write_sweep_collection(self.out / "vtk" / "vtc.pvd", snapshots)
+        try:
+            self._ramp(["source_p"], vdd, sim.vd_step)
+            for i in range(n_steps + 1):
+                v = sim.vg_start + (sim.vg_stop - sim.vg_start) * i / n_steps
+                if i > 0:
+                    self._ramp(self.gates, v, sim.vg_step)
+                vin.append(v)
+                vout.append(devsim.get_circuit_node_value(node="vout"))
+                i_dd.append(contact_current(self.device, "source_p") * scale)
+                self._tick()
+                if self.cfg.output.vtk and (
+                        i % self.cfg.output.vtk_stride == 0 or i == n_steps):
+                    prefix = self.out / "vtk" / f"vtc_{i:03d}"
+                    snapshots.append((v, write_snapshot(prefix)))
+        except ConvergenceError as exc:
+            self._flush_partial("vtc.csv", [
+                {"vin_v": a, "vout_v": b, "i_dd_a": c}
+                for a, b, c in zip(vin, vout, i_dd)], exc)
+            raise
+        finally:
+            if snapshots:
+                write_sweep_collection(self.out / "vtk" / "vtc.pvd",
+                                       snapshots)
 
         fom = extract_vtc_fom(vin, vout, vdd)
         rows = [{"vin_v": a, "vout_v": b, "i_dd_a": c}
@@ -383,18 +438,22 @@ class Runner:
     # --- entry point -------------------------------------------------------
 
     def run(self) -> dict:
+        check_sim_structure(self.cfg)  # clear error before any meshing
         msh = self.build_mesh()
         self._validate_sim_contacts()  # clear error before any DEVSIM work
         self.setup(msh)
-        if self.cfg.simulation.type == "idvg":
-            return self.run_idvg()
-        if self.cfg.simulation.type == "cfet_idvg":
-            return self.run_cfet_idvg()
-        if self.cfg.simulation.type == "cfet_idvd":
-            return self.run_cfet_idvd()
-        if self.cfg.simulation.type == "cfet_vtc":
-            return self.run_cfet_vtc()
-        return self.run_idvd()
+        experiments = {"idvg": self.run_idvg,
+                       "idvd": self.run_idvd,
+                       "cfet_idvg": self.run_cfet_idvg,
+                       "cfet_idvd": self.run_cfet_idvd,
+                       "cfet_vtc": self.run_cfet_vtc}
+        try:
+            experiment = experiments[self.cfg.simulation.type]
+        except KeyError:
+            raise ValueError(
+                f"unknown simulation type "
+                f"{self.cfg.simulation.type!r}") from None
+        return experiment()
 
 
 def run_config(config: RunConfig, output_dir: Path | None = None) -> dict:

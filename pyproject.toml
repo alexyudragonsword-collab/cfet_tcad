@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfet-tcad"
-version = "0.5"
+dynamic = ["version"]  # single-sourced from cfet_tcad.__version__
 description = "Open-source CFET / nanosheet TCAD simulation system built on DEVSIM + gmsh, with VTK output for VisIt"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,6 +27,9 @@ viz = ["pyvista", "pyvistaqt"]
 [project.scripts]
 cfet-tcad = "cfet_tcad.workflow.cli:main"
 cfet-tcad-gui = "cfet_tcad.gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "cfet_tcad.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

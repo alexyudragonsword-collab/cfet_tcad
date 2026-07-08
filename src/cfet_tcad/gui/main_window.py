@@ -277,6 +277,7 @@ class MainWindow(QMainWindow):
         self.queue.log_line.connect(self.log.append)
         self.queue.experiment_changed.connect(self._refresh_status)
         self.queue.experiment_changed.connect(self._refresh_action_row)
+        self.queue.experiment_failed.connect(self._experiment_failed)
 
         self.populate_configs(self.project_root / "configs")
         self.statusBar().showMessage("ready")
@@ -401,6 +402,9 @@ class MainWindow(QMainWindow):
         proc.readyReadStandardOutput.connect(
             lambda: self._on_step_output(proc))
         proc.finished.connect(lambda code, _s: self._step_converted(code))
+        proc.finished.connect(lambda *_: proc.deleteLater())
+        proc.errorOccurred.connect(
+            lambda err: self._cli_start_failed("STEP conversion", proc, err))
         self.statusBar().showMessage("converting STEP to mesh...")
         proc.start()
 
@@ -573,15 +577,43 @@ class MainWindow(QMainWindow):
                          errors="replace").splitlines()])
         proc.finished.connect(
             lambda code, _s: self._structure_ready(out, code))
+        proc.finished.connect(lambda *_: proc.deleteLater())
+        proc.errorOccurred.connect(
+            lambda err: self._cli_start_failed("Structure preview",
+                                               proc, err))
         self.statusBar().showMessage("building structure preview...")
         proc.start()
 
     def _structure_ready(self, out: Path, exit_code: int) -> None:
         if exit_code != 0:
             self.statusBar().showMessage("structure preview failed")
+            QMessageBox.warning(
+                self, "Structure preview failed",
+                "The mesh/doping export exited with an error - see the "
+                "[structure] lines in the Log panel for details.")
             return
         self.structure.load_dir(out / "vtk")
         self.statusBar().showMessage("structure loaded")
+
+    def _experiment_failed(self, exp: Experiment, tail: str) -> None:
+        """A failed run gets the same treatment as a failed STEP
+        conversion: the error tail in a dialog, not just a red cell."""
+        tail = "\n".join(tail.splitlines()[-14:]) or "(no output captured)"
+        QMessageBox.warning(
+            self, f"Run failed - {exp.name}",
+            "The simulation exited with an error. Details (also in the "
+            "Log panel):\n\n" + tail)
+
+    def _cli_start_failed(self, what: str, proc, error) -> None:
+        """FailedToStart never delivers finished(): surface it here."""
+        from PySide6.QtCore import QProcess
+        if error != QProcess.FailedToStart:
+            return
+        self.statusBar().showMessage(f"{what} failed to start")
+        QMessageBox.warning(
+            self, what,
+            f"Could not start the CLI subprocess ({proc.program()}).")
+        proc.deleteLater()
 
     # --- experiments table ----------------------------------------------
 
@@ -645,6 +677,19 @@ class MainWindow(QMainWindow):
         AboutDialog(self).exec()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        active = [e for e in self.model.experiments
+                  if e.status in ("queued", "running")]
+        if active:
+            answer = QMessageBox.question(
+                self, "Quit",
+                f"{len(active)} experiment(s) still running or queued. "
+                "Stop them and quit?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer != QMessageBox.Yes:
+                event.ignore()
+                return
+        # kill + wait so no solver subprocess outlives the window
+        self.queue.shutdown()
         self.help.close()  # the guide/manual windows follow the main one
         self.manual.close()
         super().closeEvent(event)

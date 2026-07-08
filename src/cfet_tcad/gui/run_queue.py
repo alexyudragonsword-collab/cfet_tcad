@@ -86,7 +86,10 @@ def cli_command() -> tuple[str, list[str]]:
 class RunQueue(QObject):
     log_line = Signal(str)
     experiment_changed = Signal(int)  # row index
+    experiment_failed = Signal(object, str)  # Experiment, output tail
     idle = Signal()
+
+    TAIL_LINES = 30  # solver output kept per run for the failure dialog
 
     def __init__(self, model: ExperimentModel, max_parallel: int = 2,
                  parent=None):
@@ -96,6 +99,7 @@ class RunQueue(QObject):
         # keyed by Experiment identity, never by row: removing a table
         # row shifts every following row index
         self._procs: dict[Experiment, QProcess] = {}
+        self._tails: dict[Experiment, list[str]] = {}
 
     # --- job creation -------------------------------------------------------
 
@@ -163,7 +167,12 @@ class RunQueue(QObject):
             self.idle.emit()
 
     def _touch(self, exp: Experiment) -> None:
-        row = self.model.row_of(exp)
+        try:
+            row = self.model.row_of(exp)
+        except ValueError:
+            # removed from the table while a process callback was in
+            # flight: nothing left to repaint
+            return
         self.model.update_row(row)
         self.experiment_changed.emit(row)
 
@@ -178,7 +187,12 @@ class RunQueue(QObject):
             lambda e=exp, p=proc: self._on_output(e, p))
         proc.finished.connect(
             lambda code, _status, e=exp: self._on_finished(e, code))
+        # a process that cannot launch never emits finished(); without
+        # this the row stays "running" and its pool slot leaks
+        proc.errorOccurred.connect(
+            lambda err, e=exp: self._on_proc_error(e, err))
         self._procs[exp] = proc
+        self._tails[exp] = []
         exp.status = "running"
         self._touch(exp)
         self.log_line.emit(f"[{exp.name}] started")
@@ -186,6 +200,7 @@ class RunQueue(QObject):
 
     def _on_output(self, exp: Experiment, proc: QProcess) -> None:
         text = bytes(proc.readAllStandardOutput()).decode(errors="replace")
+        tail = self._tails.setdefault(exp, [])
         for line in text.splitlines():
             progress = parse_progress_line(line)
             if progress is not None:  # swallowed: table cell, not log spam
@@ -193,10 +208,30 @@ class RunQueue(QObject):
                 exp.progress = done / total if total else None
                 self._touch(exp)
                 continue
+            tail.append(line)
+            del tail[:-self.TAIL_LINES]
             self.log_line.emit(f"[{exp.name}] {line}")
 
+    def _on_proc_error(self, exp: Experiment, error) -> None:
+        # crashes and kills still deliver finished(); only a start
+        # failure would otherwise leave the experiment stuck
+        if error != QProcess.FailedToStart:
+            return
+        proc = self._procs.pop(exp, None)
+        if proc is None:
+            return
+        self._tails.pop(exp, None)
+        exp.status = "failed"
+        self._touch(exp)
+        msg = f"could not start the solver process ({proc.program()})"
+        self.log_line.emit(f"[{exp.name}] failed: {msg}")
+        self.experiment_failed.emit(exp, msg)
+        proc.deleteLater()
+        self._maybe_start()
+
     def _on_finished(self, exp: Experiment, exit_code: int) -> None:
-        self._procs.pop(exp, None)
+        proc = self._procs.pop(exp, None)
+        tail = "\n".join(self._tails.pop(exp, []))
         if exp.status != "stopped":  # a stop() stays a stop, not a failure
             exp.status = "done" if exit_code == 0 else "failed"
         if exit_code == 0:
@@ -206,6 +241,10 @@ class RunQueue(QObject):
                     json.loads(fom_path.read_text(encoding="utf-8")))
         self._touch(exp)
         self.log_line.emit(f"[{exp.name}] {exp.status} (exit {exit_code})")
+        if exp.status == "failed":
+            self.experiment_failed.emit(exp, tail)
+        if proc is not None:
+            proc.deleteLater()
         self._maybe_start()
 
     def stop(self, exp: Experiment) -> None:
@@ -224,3 +263,10 @@ class RunQueue(QObject):
     def stop_all(self) -> None:
         for exp in list(self.model.experiments):
             self.stop(exp)
+
+    def shutdown(self, timeout_ms: int = 3000) -> None:
+        """Stop everything and wait for the kills to land, so no solver
+        subprocess outlives the window (called from closeEvent)."""
+        self.stop_all()
+        for proc in list(self._procs.values()):
+            proc.waitForFinished(timeout_ms)

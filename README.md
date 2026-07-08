@@ -55,6 +55,9 @@ cfet-tcad run configs/nsheet_nfet_2d_full.yaml
 # 完整 CFET 堆叠: nFET-on-pFET 共栅, 单次耦合求解同时输出 n/p 转移特性
 cfet-tcad run configs/cfet_2d.yaml
 
+# CFET 输出特性 (cfet_idvd): 每个固定共栅偏压下同时扫出 n/p 两管 Id-Vd
+cfet-tcad run configs/cfet_idvd_2d.yaml
+
 # CFET 反相器 VTC: 器件/电路混合求解 (对标 Sentaurus mixed-mode)
 cfet-tcad run configs/cfet_vtc_2d.yaml
 
@@ -100,6 +103,24 @@ device:
       bulk: {profile: uniform, donors_cm3: 1.0e17, acceptors_cm3: 0}
 ```
 
+**STEP（CAD）导入**：任意 CAD 软件导出的 `.step`/`.stp` 装配体可直接
+转成可仿真网格。写一份 import spec（把每个 solid 映射到
+region/材料,按包围盒标注 contact 面与掺杂）后一条命令完成转换,输出
+`.msh` + 一份可直接运行的 starter 配置（`structure: external`,按接触
+命名自动推断单管/CFET 仿真类型）：
+
+```bash
+cfet-tcad import-step configs/paper_fbc_cfet_demo_import.yaml \
+    -o configs/paper_fbc_cfet_demo.msh
+cfet-tcad run configs/paper_fbc_cfet_demo_run.yaml
+```
+
+仓库自带两个论文级 CFET 演示件：`configs/paper_fbc_cfet_demo.step`
+（forksheet/FBC）与 `configs/paper_sbc_cfet_demo.step`（双片 SBC），
+均配好 import spec 与运行配置;GUI 里在左侧 CAD 分区右键 →
+"Convert to mesh…" 即可完成同样流程（`examples/make_paper_*_step.py`
+是这两个 STEP 的生成脚本）。
+
 **CSV 设计点导入**：DOE 表格（Excel 导出即可）直接驱动 sweep,列名为
 点分配置路径,每行一次仿真;导出的 `sweep_summary.csv` 改一改可直接
 回灌（状态/FOM 列自动忽略）。GUI 的 Sweep 对话框有同款 "Import CSV"：
@@ -126,27 +147,42 @@ pip install -e '.[gui]'    # 安装 PySide6-Essentials
 cfet-tcad-gui              # 在项目根目录启动（读取 ./configs 与 ./results）
 ```
 
-布局与交互范式对标 SWB：
+单窗口布局（三个可拖拽分区 + 左侧文件面板），交互范式对标 SWB：
 
-- **Experiments 页**（SWB 实验表格）：每行一个实验点，状态色块随运行
-  流转（灰=排队 / 黄=运行中 / 绿=完成 / 红=失败），完成后 Vt/SS/Ion/
-  Ioff/DIBL 列自动回填；双击行打开其结果。
-- **Parameters 页**（工具参数面板）：从配置 dataclass 自动生成的分组
-  表单，下拉框覆盖结构/迁移率/量子模型/材料等枚举项，保存前经完整
-  配置校验。
-- **Results 页**（Sentaurus Visual/Inspect）：matplotlib 交互画布重绘
-  CSV 曲线（log/linear 切换、缩放/平移工具栏）+ 展平的 FOM 表。
-- **Structure 3D 页**（SDE + Sentaurus Visual 3D）：PyVista/VTK 交互
-  三维渲染（需 `pip install -e '.[viz]'`）——工具栏 Structure 按钮对
-  当前配置做"只建结构不求解"的快照预览（`cfet-tcad structure`，掺杂
-  着色），双击已完成实验行则加载其偏压快照，字段下拉切换
-  Structure/NetDoping/Potential/Electrons/Lambda_n，可剖切、可选偏压
-  点；无 pyvista 时该页优雅降级为提示。命令行等价：
+- **左侧文件面板**：上下两个分区分别列出配置文件夹（菜单栏 Open 可
+  切换，路径显示在列表上方）里的设计（`.yaml`）与 CAD 模型
+  （`.step`）。YAML 双击/右键 Edit 弹出参数编辑器，右键还有
+  Add（注册为实验行）/Copy/Delete；STEP 右键 "Convert to mesh…"
+  转网格、"List volumes" 列出实体。
+- **Experiments 实验表**（上方，SWB 实验表格）：每行一个实验点，行内
+  按钮 Run / Stop / Edit / Sweep / Structure 直接驱动该行；状态色块随
+  运行流转（浅灰=待运行 / 灰=排队 / 黄=运行中(带百分比) / 绿=完成 /
+  红=失败 / 灰蓝=已停止），完成后 Vt/SS/Ion/Ioff/DIBL 列自动回填,
+  最右 Changes 列显示该行配置相对原始设计的改动;双击行加载其结果；
+  工具栏 Run All / Stop All 全局启停。运行失败会弹出带错误尾部的
+  对话框（细节同时在日志面板）。
+- **参数编辑弹窗**（Edit 按钮 / 双击 YAML）：从配置 dataclass 自动
+  生成的分组表单，下拉框覆盖结构/迁移率/量子模型/材料等枚举项，
+  保存前经完整配置校验；Save 覆盖原文件,Save As 可存回 configs/
+  变成新设计。
+- **Results 分区**（左下,Sentaurus Visual/Inspect）：matplotlib 交互
+  画布重绘 CSV 曲线（log/linear 切换、缩放/平移工具栏）+ 展平的
+  FOM 表,五种实验类型（含 cfet_idvd 输出特性）都有对应画法。
+- **Structure 3D 分区**（右下,SDE + Sentaurus Visual 3D）：
+  PyVista/VTK 交互三维渲染（需 `pip install -e '.[viz]'`）——行内
+  Structure 按钮对该行配置做"只建结构不求解"的快照预览
+  （`cfet-tcad structure`,掺杂着色），双击已完成实验行则加载其偏压
+  快照，字段下拉切换 Structure/NetDoping/Potential/Electrons/
+  Lambda_n，可剖切、可选偏压点、可导出 STL/OBJ；无 pyvista 时优雅
+  降级为提示。命令行等价：
   `cfet-tcad structure configs/cfet_3d.yaml -o out --png device.png`。
-- **Sweep… 对话框**：多行 `path=v1,v2,...` 参数网格（可选 zip 成组），
-  在表格中展开为逐点任务，限并发并行执行。
+- **Sweep… 对话框**（行内 Sweep 按钮）：多行 `path=v1,v2,...` 参数
+  网格（可选 zip 成组、可 Import CSV），在表格中展开为逐点任务，
+  限并发并行执行,每个点的 Changes 列相对原始设计。
 - 每个实验在独立 OS 进程中运行（QProcess 驱动 CLI，与 DEVSIM 全局
-  状态要求一致）；日志面板默认过滤求解器迭代噪声（可开 verbose）。
+  状态要求一致），关窗前会确认并停止在跑任务；日志面板默认过滤
+  求解器迭代噪声（可开 verbose）。帮助菜单内置双语 User Guide 与
+  软件说明书（中/英切换）。
 
 无显示器环境（CI/容器）可用 `QT_QPA_PLATFORM=offscreen` 运行与测试。
 
@@ -306,9 +342,10 @@ src/cfet_tcad/
 ├── extract/         # figures_of_merit.py
 ├── io/              # vtk_export.py / results.py
 └── workflow/        # config.py / runner.py / cli.py
-configs/             # nFET/pFET Id-Vg、nFET Id-Vd 示例
-examples/            # Python API 示例
-tests/               # pytest: 几何/加载/提取/配置/求解冒烟
+configs/             # 20+ 示例设计: 2D/3D 纳米片、CFET 堆叠(转移/输出/VTC)、
+                     #   SiGe、量子修正、论文复现、STEP 演示件(.step + import spec)
+examples/            # Python API 示例、STEP 生成脚本、ParaView 宏
+tests/               # pytest: 几何/加载/提取/配置/求解/GUI/STEP 导入/3D 渲染
 ```
 
 ## 路线图
@@ -334,4 +371,6 @@ tests/               # pytest: 几何/加载/提取/配置/求解冒烟
   指数必须整体加括号（见 `physics/doping.py`）。
 - `devsim.reset_devsim()` 会清掉 UMFPACK direct solver 注册，
   使用 `cfet_tcad.reset()` 代替（tests/conftest.py 依赖此行为）。
-- 运行测试：`pytest`（约 15 秒，含两个粗网格平衡态求解冒烟测试）。
+- 运行测试：`pytest -m "not slow"` 数十秒完成快速子集；全量 `pytest`
+  （140 个上下，含 2D/3D 全流程与 STEP 导入的慢速用例）约数分钟，
+  Linux CI 对每次 push 跑全量。

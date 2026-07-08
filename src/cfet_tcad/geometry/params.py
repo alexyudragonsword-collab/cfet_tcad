@@ -96,6 +96,12 @@ class DeviceParams:
             raise ValueError(
                 "geometric channel replication (n_fins/n_stacked_sheets"
                 " > 1) is only implemented for structure: cfet_3d")
+        if (self.n_fins > 1 or self.n_stacked_sheets > 1) \
+                and self.n_sheets != 1:
+            raise ValueError(
+                "n_sheets is an ideal current multiplier and would "
+                "double-count the geometrically meshed copies; keep "
+                "n_sheets: 1 when n_fins/n_stacked_sheets > 1")
         if self.n_fins > 1 and \
                 self.fin_pitch_nm < self.sheet_width_nm + 2 * self.t_ox_nm:
             raise ValueError(
