@@ -106,7 +106,19 @@ jobs:
 
       - name: Frozen smoke - tiny solve from a non-ASCII install path
         run: |
-          mv build/entry_nuitka.dist "build/独立版 dist"
+          # renaming the dist right after an exe inside it exits can hit a
+          # transient Windows lock (late handle release / AV scan of the
+          # fresh binaries): retry with backoff instead of failing a
+          # ~50-minute build on a timing race
+          mv_retry() {
+            for i in 1 2 3 4 5; do
+              mv "$1" "$2" 2>/dev/null && return 0
+              echo "mv \"$1\" locked (attempt $i), retrying..."
+              sleep $((3*i))
+            done
+            mv "$1" "$2"  # final attempt surfaces the real error
+          }
+          mv_retry build/entry_nuitka.dist "build/独立版 dist"
           cat > smoke_tiny.yaml <<'YAML'
           device: {name: smoke, polarity: n, gate_workfunction_ev: 4.5}
           mesh: {nx_sd: 6, nx_gate: 10, ny_si: 5, ny_ox: 2}
@@ -115,7 +127,7 @@ jobs:
           YAML
           "./build/独立版 dist/cfet-tcad.exe" run smoke_tiny.yaml -o smoke_solve
           test -f smoke_solve/fom.json
-          mv "build/独立版 dist" build/entry_nuitka.dist
+          mv_retry "build/独立版 dist" build/entry_nuitka.dist
           echo "frozen solve OK from non-ASCII path"
 
       - name: Frozen smoke - GUI boots offscreen (double-click conditions)
@@ -129,6 +141,7 @@ jobs:
           time.sleep(25)
           alive = p.poll() is None
           p.kill()
+          p.wait(timeout=30)  # fully gone before the next step moves the dist
           assert alive, f"GUI exited early with {p.returncode}"
           print("frozen GUI OK (stayed up, detached)")
           EOF
@@ -141,7 +154,14 @@ jobs:
           # the loader still finds its DLLs, they all moved together) and
           # leave only a clearly named launcher + readme at the top.
           mkdir -p build/pkg
-          mv build/entry_nuitka.dist build/pkg/app
+          # same transient-lock guard as the non-ASCII smoke: the GUI
+          # smoke killed an exe from this directory moments ago
+          for i in 1 2 3 4 5; do
+            mv build/entry_nuitka.dist build/pkg/app 2>/dev/null && break
+            echo "dist locked (attempt $i), retrying..."
+            sleep $((3*i))
+          done
+          test -d build/pkg/app
           printf '%s\n' \
             '@echo off' \
             'start "" "%~dp0app\cfet-tcad.exe" %*' \
