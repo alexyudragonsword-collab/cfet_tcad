@@ -42,7 +42,8 @@ cfet-tcad-gui                   # 在项目根目录启动
 <p>每行一次仿真，每行通过自己 <b>Actions</b> 列里的按钮独立驱动：
 <b>Run</b>（开始；对已结束的行是原地重跑 &mdash; 同一输出目录，旧结果
 被覆盖）、<b>Stop</b>、<b>Sweep</b>（以该行配置为基展开 DOE 网格）、
-<b>Structure</b>（秒级网格预览，不求解）。状态色块沿用 Sentaurus
+<b>Structure</b>（秒级网格预览，不求解）、<b>Optimize</b>（LLM 驱动的
+参数搜索，见下方 3b 节）。状态色块沿用 Sentaurus
 Workbench 约定 &mdash; <b>浅灰</b>待仿真（已加入、等 Run）、<b>灰</b>
 排队、<b>黄</b>运行中、<b>绿</b>完成、<b>红</b>失败、<b>灰蓝</b>已停止
 &mdash; V<sub>t</sub>、SS、I<sub>on</sub>、I<sub>off</sub>、DIBL 各列在
@@ -113,6 +114,35 @@ device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
 <code>sweep_summary.csv</code> 改一改即可直接回灌,状态/FOM 列自动
 忽略。命令行等价: <code>cfet-tcad sweep base.yaml --points
 doe.csv</code>。</p>
+
+<hr>
+<h2>3b. AI 参数优化（可选功能，需 <code>[llm]</code>）</h2>
+
+<p>实验行的 <b>Optimize&hellip;</b> 按钮（或右键某个 YAML &rarr;
+<b>Optimize&hellip;</b>）对该设计的可调参数（栅长、氧化层厚度、
+掺杂、功函数、迁移率标定因子——见 <code>optimize/schema.py</code>）
+展开搜索，驱动方式是 LLM 而非固定网格。设置优化目标（度量 + 最大化/
+最小化 + 可选约束，例如"最大化 ion_ioff_ratio，约束 ss_mv_per_dec
+&lt; 75"）、每轮候选数与最大轮数后开始：</p>
+
+<p><img src="img/optimize_setup.png" width="420"></p>
+
+<p>每一轮 LLM 一次性提出若干组候选参数；每个候选都先经过与
+<code>cfet-tcad run</code> 同一套校验（结构/类型不匹配与越界值在
+<b>仿真前</b>就被拒绝，轮内允许一次修复重试），合法的候选再复用
+Experiments 表同一套限并发进程池并行真实求解。完整参数提取结果
+（不只是表格四列的摘要）会整体喂回 LLM 做下一轮——这是真正的
+仿真闭环验证，不是模型自说自话。监控窗口是非模态的，运行期间主窗口
+仍可正常使用：</p>
+
+<p><img src="img/optimize_monitor.png" width="820"></p>
+
+<p><b>Adopt best&hellip;</b> 把当前找到的最优候选另存为新的可复用
+设计（与参数编辑弹窗的 Save As 是同一套机制）。LLM provider
+是可插拔适配器；内置 Claude（<code>pip install -e '.[llm]'</code>
+后 <code>export ANTHROPIC_API_KEY=...</code>）——未安装或未设置时,
+设置对话框会给出清晰说明而不是隐藏功能。此功能仅限 GUI，暂无命令行
+等价。</p>
 
 <hr>
 <h2>4. 器件结构</h2>

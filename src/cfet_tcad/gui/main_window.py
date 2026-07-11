@@ -129,12 +129,17 @@ class RowActions(QWidget):
         self.sweep_btn = _btn("Sweep", lambda: window.run_sweep(exp))
         self.structure_btn = _btn("Structure",
                                   lambda: window.preview_structure(exp))
+        self.optimize_btn = _btn(
+            "Optimize",
+            lambda: window.open_optimize_dialog(
+                exp.base_config or exp.config_path))
         self.refresh()
 
     def refresh(self) -> None:
         editable = self.exp.status in ("pending", "done", "failed", "stopped")
         self.run_btn.setEnabled(editable)
         self.edit_btn.setEnabled(editable)  # not while queued/running
+        self.optimize_btn.setEnabled(editable)
         self.stop_btn.setEnabled(self.exp.status in ("queued", "running"))
 
 
@@ -172,6 +177,9 @@ class MainWindow(QMainWindow):
         self.results = ResultsView()
         self.log = LogConsole()
         self._action_widgets: list[RowActions] = []
+        #: open, possibly still-running Optimize monitor windows -
+        #: closeEvent stops any of these still active before quitting
+        self._optimize_dialogs: list = []
 
         self.structure = StructureView()
         # the user guide lives in its own window, reached from the Help
@@ -331,6 +339,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         act_edit = menu.addAction("Edit")
         act_add = menu.addAction("Add")
+        act_optimize = menu.addAction("Optimize...")
         act_copy = menu.addAction("Copy...")
         act_delete = menu.addAction("Delete")
         chosen = menu.exec(self.config_list.viewport().mapToGlobal(pos))
@@ -338,6 +347,8 @@ class MainWindow(QMainWindow):
             self.edit_config(path)
         elif chosen is act_add:
             self.add_config_to_experiments(path)
+        elif chosen is act_optimize:
+            self.open_optimize_dialog(path)
         elif chosen is act_copy:
             self._copy_config_dialog(path)
         elif chosen is act_delete:
@@ -556,6 +567,51 @@ class MainWindow(QMainWindow):
                 base_config=exp.base_config or exp.config_path)
             self.queue.add(child)
 
+    def _llm_provider_factories(self) -> dict:
+        """Providers available to the Optimize dialog: a name -> zero-arg
+        callable returning an LLMProvider.  Empty until a concrete vendor
+        adapter is installed (the ``[llm]`` extra) - the setup dialog
+        surfaces that plainly rather than failing to open."""
+        factories: dict = {}
+        try:
+            from ..optimize.claude_provider import ClaudeProvider
+        except ImportError:
+            pass
+        else:
+            factories["Claude"] = ClaudeProvider
+        return factories
+
+    def open_optimize_dialog(self, base_config_path: Path) -> None:
+        """LLM-proposed parameter search over a base design: every
+        candidate is validated, then run for real through its own
+        RunQueue (see optimize.orchestrator.Orchestrator) - the same
+        subprocess mechanism a manual Run already uses."""
+        from ..optimize.orchestrator import Orchestrator
+        from .optimize_dialog import (
+            OptimizeExperimentModel,
+            OptimizeMonitorDialog,
+            OptimizeSetupDialog,
+        )
+        base_config_path = Path(base_config_path)
+        dlg = OptimizeSetupDialog(base_config_path,
+                                  self._llm_provider_factories(), self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        stamp = time.strftime("%H%M%S")
+        out_dir = (self.results_root
+                  / f"{stamp}_optimize_{base_config_path.stem}")
+        try:
+            orch = Orchestrator(
+                dlg.result_spec, dlg.result_provider, out_dir, parent=self,
+                model_factory=lambda o: OptimizeExperimentModel(o, parent=o))
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Optimize error", str(exc))
+            return
+        monitor = OptimizeMonitorDialog(orch, self.config_folder, self)
+        self._optimize_dialogs.append(monitor)
+        monitor.show()
+        orch.start()
+
     def preview_structure(self, exp: Experiment) -> None:
         """SDE-style preview: mesh + doping export without solving, in a
         subprocess, then load into the 3D view.  Output goes to a
@@ -679,17 +735,23 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         active = [e for e in self.model.experiments
                   if e.status in ("queued", "running")]
-        if active:
+        active_optimizers = [d for d in self._optimize_dialogs
+                             if d.orchestrator.is_running]
+        if active or active_optimizers:
             answer = QMessageBox.question(
                 self, "Quit",
-                f"{len(active)} experiment(s) still running or queued. "
-                "Stop them and quit?",
+                f"{len(active)} experiment(s) still running or queued, "
+                f"and {len(active_optimizers)} optimization run(s) still "
+                f"active. Stop them and quit?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if answer != QMessageBox.Yes:
                 event.ignore()
                 return
-        # kill + wait so no solver subprocess outlives the window
+        # kill + wait so no solver subprocess (or optimizer LLM thread)
+        # outlives the window
         self.queue.shutdown()
+        for d in self._optimize_dialogs:
+            d.orchestrator.stop()
         self.help.close()  # the guide/manual windows follow the main one
         self.manual.close()
         super().closeEvent(event)

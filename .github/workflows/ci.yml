@@ -27,7 +27,7 @@ jobs:
             libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1
 
       - name: Install package with all extras
-        run: pip install -e '.[dev,gui,viz]'
+        run: pip install -e '.[dev,gui,viz,llm]'
 
       - name: Run test suite
         run: pytest -q --durations=10

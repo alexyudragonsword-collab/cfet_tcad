@@ -32,7 +32,7 @@ jobs:
           cache: pip
 
       - name: Install package, PyInstaller, and MKL (DEVSIM's Windows BLAS)
-        run: pip install -e ".[dev,gui,viz]" pyinstaller mkl
+        run: pip install -e ".[dev,gui,viz,llm]" pyinstaller mkl
 
       - name: Windows smoke tests (DEVSIM+MKL solve, GUI offscreen)
         run: pytest tests/test_solve_smoke.py tests/test_gui.py -q

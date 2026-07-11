@@ -45,8 +45,9 @@ window, separated by draggable splitters.</p>
 <p>One row per simulation, each row driving itself through the buttons in
 its <b>Actions</b> cell: <b>Run</b> (start, or re-run a finished row in
 place &mdash; same output folder, results overwritten), <b>Stop</b>,
-<b>Sweep</b> (expand a DOE grid over this row's config), and
-<b>Structure</b> (fast mesh preview, no solve). The status chip follows
+<b>Sweep</b> (expand a DOE grid over this row's config),
+<b>Structure</b> (fast mesh preview, no solve), and <b>Optimize</b>
+(LLM-driven parameter search, &sect;3b below). The status chip follows
 the Sentaurus Workbench convention &mdash; <b>light-gray</b> pending
 (added, waiting for Run), <b>gray</b> queued, <b>yellow</b> running,
 <b>green</b> done, <b>red</b> failed, <b>gray-blue</b> stopped &mdash;
@@ -129,6 +130,42 @@ device.gate_workfunction_p_ev=4.72,4.655,4.59,4.525
 <code>sweep_summary.csv</code> from a previous sweep works as-is, its
 status/FOM columns are ignored. The CLI equivalent is
 <code>cfet-tcad sweep base.yaml --points doe.csv</code>.</p>
+
+<hr>
+<h2>3b. AI-assisted optimization (optional, requires <code>[llm]</code>)</h2>
+
+<p>A row's <b>Optimize&hellip;</b> button (or right-click a YAML &rarr;
+<b>Optimize&hellip;</b>) opens a search over that design's tunable
+parameters (gate length, oxide thickness, doping, workfunctions,
+mobility calibration factors &mdash; see
+<code>optimize/schema.py</code>), driven by an LLM instead of a fixed
+grid. Set an objective (metric + maximize/minimize + an optional
+constraint, e.g. <i>maximize ion_ioff_ratio, constrain ss_mv_per_dec
+&lt; 75</i>), candidates per round, and max rounds:</p>
+
+<p><img src="img/optimize_setup.png" width="420"></p>
+
+<p>Each round the LLM proposes several candidate parameter sets at
+once; every candidate is validated the same way <code>cfet-tcad
+run</code> already validates a config (structural/type mismatches and
+out-of-range values are rejected <i>before</i> any solve, with one
+in-round repair retry) and the survivors run for real, in parallel,
+through the same bounded process pool the Experiments table uses.
+Results (the full figure-of-merit set, not just the table's four
+columns) are fed back to the LLM for the next round &mdash; this is
+real simulation-in-the-loop, not the model guessing blind. The monitor
+window is non-modal, so the rest of the GUI stays usable while a run is
+in progress:</p>
+
+<p><img src="img/optimize_monitor.png" width="820"></p>
+
+<p><b>Adopt best&hellip;</b> saves the best candidate found as a new
+reusable design (same Save-As mechanism as the parameter editor).
+The LLM provider is a pluggable adapter; Claude ships built in
+(<code>pip install -e '.[llm]'</code>, then
+<code>export ANTHROPIC_API_KEY=...</code>) &mdash; without it the setup
+dialog explains what's missing rather than silently hiding the
+feature. This is GUI-only; there is no CLI equivalent.</p>
 
 <hr>
 <h2>4. Device structures</h2>

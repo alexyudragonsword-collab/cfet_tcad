@@ -41,7 +41,7 @@ jobs:
           restore-keys: nuitka-${{ runner.os }}-py311-
 
       - name: Install package, Nuitka, and MKL (DEVSIM's Windows BLAS)
-        run: pip install -e ".[gui,viz]" nuitka mkl
+        run: pip install -e ".[gui,viz,llm]" nuitka mkl
 
       - name: Compile standalone bundle
         run: >
