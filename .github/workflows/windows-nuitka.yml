@@ -188,6 +188,33 @@ jobs:
           test -f "build/pkg/app/cfet-tcad.exe"
           test -f "build/pkg/app/configs/cfet_3d.yaml"
 
+      - name: Bundle size breakdown (diagnostic - never fails the build)
+        run: |
+          set +e  # this whole step is informational only
+          app="build/pkg/app"
+          echo "=== total ==="
+          du -sh build/pkg
+          echo
+          echo "=== $app top-level, sorted largest first ==="
+          du -sh "$app"/* 2>/dev/null | sort -rh | head -25
+          echo
+          echo "=== usual suspects (VTK / MKL / Qt / sci-stack / anthropic) ==="
+          # Nuitka's standalone output is a flat pile - module DLLs/pyds
+          # use dotted names (e.g. vtkmodules.vtkRenderingCore.pyd), so
+          # match loosely rather than assume the PyInstaller-style prefix
+          for pat in "*vtkmodules*" "*PySide6*" "mkl_*" "libiomp5md*" \
+                    "*numpy*" "*scipy*" "*matplotlib*" "*devsim*" \
+                    "*gmsh*" "*anthropic*" "*httpx*" "*httpcore*" \
+                    "*pyvista*"; do
+            size=$(du -sch "$app"/$pat 2>/dev/null | tail -1 | cut -f1)
+            if [ -n "$size" ] && [ "$size" != "0" ]; then
+              printf "%-8s %s\n" "$size" "$pat"
+            fi
+          done
+          echo "(informational only - never fails the job)"
+          exit 0
+        continue-on-error: true
+
       - uses: actions/upload-artifact@v4
         with:
           name: cfet-tcad-windows-x64-nuitka
