@@ -5,8 +5,9 @@
 > 本文件是唯一的、面向全工程生命周期的主计划——只写里程碑摘要，不重复
 > 存档文件里的实施细节。
 
-最后更新：LLM 器件参数优化器（分支 `claude/cfet-tcad-simulation-zh2kfo`，
-详见下方 Phase 11 与 `docs/dev_plan_llm_optimizer.md`）。
+最后更新：Windows 包体积治理 + 文档补齐（分支
+`claude/cfet-tcad-simulation-zh2kfo`，详见下方 Phase 12 与
+`docs/dev_plan_windows_exe_size.md`）。
 
 ## 0. Plan-mode 计划归档索引
 
@@ -42,9 +43,10 @@ plan-mode 计划的完整原文（从会话 transcript 逐字恢复，含上下�
 | 21 | Help 中英对照《软件说明书》+ About 版权信息 | `06f6865` |
 | 22 | GUI 文件面板分区 + 实验行 Edit/另存 + 改动列 | `9714d63` |
 | 23 | 全工程审查整改:P0 关键缺陷 + P1 重要改进 | `1fb9458`（+ CI 修复 `286da09`）|
-| 24 | LLM 器件参数优化器(GUI 直接集成) | 本次提交 |
+| 24 | LLM 器件参数优化器(GUI 直接集成) | `66c6325` |
+| 25 | Windows exe 体积:先诊断,再裁剪 | `79294b1` + 本次提交 |
 
-其中 14 起均有独立文件（`dev_plan_windows_exe_configs_bundling.md`、
+其中 15 起均有独立文件（`dev_plan_windows_exe_configs_bundling.md`、
 `dev_plan_windows_exe_doctor_tempfile_fix.md`、
 `dev_plan_paper_cfet_comparison.md`、`dev_plan_multi_channel_cfet.md`、
 `dev_plan_gui_progress_stop_delete.md`、
@@ -52,7 +54,8 @@ plan-mode 计划的完整原文（从会话 transcript 逐字恢复，含上下�
 `dev_plan_gui_dpi_layout.md`、`dev_plan_fig4_step_demo.md`、
 `dev_plan_sbc_step_demo.md`、`dev_plan_manual_about_copyright.md`、
 `dev_plan_gui_experiment_edit_filepanes.md`、
-`dev_plan_code_review_p0p1.md`、`dev_plan_llm_optimizer.md`，
+`dev_plan_code_review_p0p1.md`、`dev_plan_llm_optimizer.md`、
+`dev_plan_windows_exe_size.md`，
 为本约定建立后的逐份归档）。
 今后新计划继续逐份归档为 `dev_plan_<slug>.md` 并同步加入
 DEV_PLANS_ARCHIVE.md 与本索引。
@@ -80,14 +83,15 @@ Python + DEVSIM（漂移扩散求解器）+ gmsh（参数化网格）+ VTK/VisIt
 
 ## 2. 当前状态一览
 
-- **源码**：`src/cfet_tcad/` 约 8110 行（58 个模块文件，含新增
-  `optimize/` 包 7 个文件）
-- **测试**：`tests/` **190 个测试**，含 5+ 组位精确交叉验证、全部
+- **源码**：`src/cfet_tcad/` 8106 行（58 个模块文件，含
+  `optimize/` 包 8 个文件）
+- **测试**：`tests/` **172 个测试函数**（26 个文件；`pytest` 实际
+  收集数因参数化略高于此），含 5+ 组位精确交叉验证、全部
   五种实验类型的端到端冒烟、LLM 优化器的假 provider/假 CLI 端到端
 - **示例配置**：`configs/` 21 个 YAML（2D/3D 纳米片、CFET 堆叠
   转移/输出/VTC、SiGe、量子修正、论文复现 5 个）+ STEP 导入示例
   两套六件（FBC/SBC 各 `.step` + 映射 spec + 运行配置）
-- **提交数**：66+（主分支 `claude/cfet-tcad-simulation-zh2kfo`）
+- **提交数**：68（开发分支 `claude/cfet-tcad-simulation-zh2kfo`）
 - **版本**：0.5.2,pyproject 由 `cfet_tcad.__version__` 动态单源
 - **仿真类型**：`idvg` / `idvd`(单器件)+ `cfet_idvg` / `cfet_idvd` /
   `cfet_vtc`(CFET 堆叠:共栅转移 / 输出特性 / 反相器 VTC);仿真类型
@@ -236,6 +240,22 @@ QThread 驱动的轮次循环控制器 + 复用 RunQueue 并行验证、
 Windows 打包工作流)。四阶段分批交付,190 个测试(新增 54 个,全部
 用 `FakeProvider`/假 CLI 子进程/fake `anthropic` 模块,不需要网络或
 真实 API key)。
+
+### Phase 12 — Windows 包体积治理 + 文档补齐(计划 25)
+用户反馈 Windows 包偏大(zip 460–480 MB)。坚持"先量后裁":先给两条
+打包 workflow 各加一个纯诊断步骤(`79294b1`)打印分目录/分包体积,
+两条构建均 success 后拿到真实明细——解包 1.3 GB,其中 MKL 539 MB
+(41%)、VTK 314 MB(24%)、gmsh 172 MB(13%)、PySide6 84 MB。
+据此只做两刀有确凿依据的裁剪(-209 MB):**gmsh 去重**(读 gmsh wheel
+源码确认 `possible_libpaths[0]` 就是模块自身目录,`lib/` 那份副本
+从未被读到,-86 MB);**MKL 不可达 DLL**(全仓库不设
+`MKL_THREADING_LAYER` 故 tbb/sequential 线程层不可达,DEVSIM 只调
+BLAS/LAPACK 且 PyPI numpy/scipy 链 OpenBLAS 故 VML 不可达,
+-123 MB)。CPU 分派变体全部保留(`mkl_rt` 按宿主 CPU 选一个,删错
+只打死特定机器);两条跑道各加必需 DLL 断言,缺失即构建失败而非
+产出"能启动、一求解就死"的包。VTK 那 314 MB 留作独立一轮。
+同期补齐文档缺口:新增 `CHANGELOG.md`(面向用户的版本变更历史,
+此前只有开发视角的 Phase 回顾)、补归档计划 25、刷新本文统计数字。
 
 ## 4. 已知能力边界（明确声明，非缺陷）
 

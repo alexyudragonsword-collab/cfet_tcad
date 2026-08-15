@@ -10,6 +10,8 @@ on Python, DEVSIM (drift-diffusion solver), and gmsh (parametric meshing),
 with VTK output for VisIt/ParaView — benchmarked conceptually against the
 Synopsys Sentaurus tool chain.
 
+版本变更历史见 [`CHANGELOG.md`](CHANGELOG.md)。
+
 ## 与 Sentaurus 的组件映射
 
 | Sentaurus 组件 | 本系统模块 | 说明 |

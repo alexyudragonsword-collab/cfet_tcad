@@ -73,20 +73,31 @@ jobs:
           from pathlib import Path
           dist = Path("build/entry_nuitka.dist")
           assert dist.is_dir(), dist
-          (dist / "lib").mkdir(exist_ok=True)
+          # mkl_rt loads exactly one threading layer and (if ever asked)
+          # one VML code path.  Nothing sets MKL_THREADING_LAYER, so
+          # intel_thread + libiomp5md is what runs; DEVSIM calls
+          # BLAS/LAPACK and never VML.  ~123 MB of the pip 'mkl' wheel is
+          # therefore unreachable.  The CPU-dispatch variants
+          # (def/mc3/avx2/avx512/avx10) all stay - mkl_rt chooses one from
+          # the host CPU, so dropping one breaks exactly those machines.
+          SKIP = ("mkl_tbb_thread", "mkl_sequential", "mkl_vml_")
           copied = []
           libbin = Path(sys.prefix) / "Library" / "bin"
           for pattern in ("mkl_*.dll", "libiomp5md*.dll"):
               for src in libbin.glob(pattern):
+                  if src.name.startswith(SKIP):
+                      continue
                   shutil.copy2(src, dist); copied.append(src.name)
+          # gmsh.py probes os.path.dirname(__file__) first, which is the
+          # dist root here, so the root copy is the one that loads - the
+          # second copy under lib/ was dead weight (~86 MB)
           for src in (Path(sys.prefix) / "lib").glob("gmsh*.dll"):
               shutil.copy2(src, dist)
-              shutil.copy2(src, dist / "lib")
               copied.append(src.name)
           print(f"copied {len(copied)} DLLs:", *copied[:6])
-          assert any(n.startswith("mkl_rt") for n in copied), "mkl_rt missing"
-          assert any(n.startswith("libiomp5md") for n in copied), "iomp missing"
-          assert any(n.startswith("gmsh") for n in copied), "gmsh dll missing"
+          for required in ("mkl_rt", "mkl_core", "mkl_intel_thread",
+                           "libiomp5md", "gmsh"):
+              assert any(n.startswith(required) for n in copied), f"{required} missing"
           EOF
 
       - name: Bundle example design configs (visible next to the exe)

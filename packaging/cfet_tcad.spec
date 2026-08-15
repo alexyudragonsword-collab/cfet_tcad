@@ -22,19 +22,42 @@ for pkg in ("devsim", "gmsh", "pyvista", "pyvistaqt", "vtkmodules"):
     hiddenimports += h
 datas += collect_data_files("cfet_tcad")  # bundled help guides + images
 
+# MKL ships one DLL per threading layer and per vector-math (VML) code
+# path, but mkl_rt only ever loads ONE of each at runtime.  Nothing in
+# this project sets MKL_THREADING_LAYER, so the default (intel_thread,
+# which pulls in libiomp5md at the first BLAS call) is what runs — the
+# TBB and sequential layers are never reached.  VML is Intel's vector
+# math library (vdExp/vdMul/…); DEVSIM calls BLAS/LAPACK and the sparse
+# solvers, and numpy/scipy on PyPI link OpenBLAS rather than MKL, so no
+# VML entry point is ever called.  Together that is ~123 MB of dead
+# weight.  The CPU-dispatch variants (def/mc3/avx2/avx512/avx10) all
+# STAY: mkl_rt picks one from the host CPU at load time, so dropping any
+# of them breaks precisely the machines that need it.
+_MKL_SKIP_PREFIXES = ("mkl_tbb_thread", "mkl_sequential", "mkl_vml_")
+
 if sys.platform == "win32":
     libbin = Path(sys.prefix) / "Library" / "bin"
     if libbin.is_dir():
-        # mkl_rt plus its lazily-loaded threading layer: the default
-        # (intel_thread) pulls in the OpenMP runtime at the FIRST BLAS
-        # call, so libiomp5md must ship even though imports work without
         for pattern in ("mkl_*.dll", "libiomp5md*.dll"):
-            binaries += [(str(p), ".") for p in libbin.glob(pattern)]
+            for p in libbin.glob(pattern):
+                if p.name.startswith(_MKL_SKIP_PREFIXES):
+                    continue
+                binaries += [(str(p), ".")]
+        # the dispatcher and the one threading layer we rely on are not
+        # optional — fail the build loudly rather than ship a bundle that
+        # only dies on the first solve
+        _names = {Path(src).name for src, _ in binaries}
+        for _required in ("mkl_rt", "mkl_core", "mkl_intel_thread", "libiomp5md"):
+            assert any(n.startswith(_required) for n in _names), f"{_required} missing"
     # the gmsh wheel installs its DLL via the data scheme into
-    # <prefix>/lib, outside the package — collect_all misses it; place it
-    # both at the bundle root and under lib/ (gmsh.py probes both)
-    for dll in (Path(sys.prefix) / "lib").glob("gmsh*.dll"):
-        binaries += [(str(dll), "."), (str(dll), "lib")]
+    # <prefix>/lib, outside the package — collect_all misses it.  gmsh.py
+    # probes `os.path.dirname(__file__)` FIRST (see its possible_libpaths),
+    # and that resolves to the bundle root here, so the root copy is the
+    # one that loads; a second copy under lib/ was never reached (~86 MB).
+    _gmsh_dlls = list((Path(sys.prefix) / "lib").glob("gmsh*.dll"))
+    assert _gmsh_dlls, "gmsh DLL not found under <prefix>/lib"
+    for dll in _gmsh_dlls:
+        binaries += [(str(dll), ".")]
 
 common = dict(
     pathex=[],
