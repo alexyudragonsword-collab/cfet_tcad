@@ -1,0 +1,26 @@
+version: 0.1
+project:
+  name: "STACKED CMOS TCAD"
+  summary: "开源 CFET / 堆叠纳米片器件 TCAD 仿真系统，基于 Python + DEVSIM + gmsh + PySide6，对标 Synopsys Sentaurus 工具链。"
+cairn:
+  knowledge_dir: "cairn"
+  # Date of the skill spec this instance was initialized against, or last
+  # upgraded to. Stamped automatically by init from references/upgrade.md's
+  # "Current spec date" (not a user decision); re-stamped after each instance
+  # upgrade. Audit/upgrade drift checks compare it against the upgrade.md
+  # changelog.
+  skill_spec_date: "2026-08-07"
+  # git_policy: track | ignore | private_sync
+  # 本仓库是公开仓库，知识笔记随仓库公开——与既有 docs/ 归档的处理方式一致。
+  git_policy: "track"
+  # language: en | zh | ... — language used when writing AGENTS.md/LOG.md/ROADMAP.md/topic notes
+  language: "zh"
+graduation:
+  # 暂缓对接：Cairn 的核心机制（LOG、知识专题文档、审计）无需 provider。
+  # provider 决策留到首次毕业时收集（见 references/graduation.md → Deferred provider）。
+  provider: none
+history:
+  # migration_mode: start_fresh | inventory_only | selective_migrate
+  # 项目已有大量历史知识（docs/ 下 25 份归档计划、代码评审报告、滚动主计划），
+  # 只登记清单、不改写原文。清单见 cairn/历史知识清单.md。
+  migration_mode: "inventory_only"
